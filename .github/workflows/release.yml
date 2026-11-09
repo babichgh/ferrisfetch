@@ -18,6 +18,23 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  check:
+    name: Validate release
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo fmt --check
+      - run: cargo clippy --locked --all-targets -- -D warnings
+      - run: python3 tools/generate_logos.py --check
+      - run: cargo test --locked
+      - run: cargo publish --dry-run --locked
+
   version:
     name: Resolve version
     runs-on: ubuntu-latest
@@ -35,7 +52,7 @@ jobs:
 
   rpm:
     name: rpm
-    needs: version
+    needs: [version, check]
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -76,7 +93,7 @@ jobs:
 
   deb:
     name: deb
-    needs: version
+    needs: [version, check]
     runs-on: ubuntu-latest
     container:
       # Built on the oldest supported base so the binary does not require a
@@ -95,9 +112,59 @@ jobs:
           path: dist/*.deb
           if-no-files-found: error
 
+  crates:
+    name: Publish to crates.io
+    needs: [version, rpm, deb]
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+
+      # A rerun must not try to upload an immutable version again. Only a
+      # genuine 404 means absent; network/server errors must fail the job.
+      - name: Check whether the version is already published
+        id: registry
+        env:
+          VERSION: ${{ needs.version.outputs.version }}
+        run: |
+          python3 - <<'PY'
+          import os
+          import urllib.error
+          import urllib.request
+
+          url = f"https://crates.io/api/v1/crates/ferrisfetch/{os.environ['VERSION']}"
+          request = urllib.request.Request(url, headers={"User-Agent": "ferrisfetch-release (github.com/babichgh/ferrisfetch)"})
+          try:
+              with urllib.request.urlopen(request, timeout=30):
+                  published = True
+          except urllib.error.HTTPError as error:
+              if error.code != 404:
+                  raise
+              published = False
+          with open(os.environ["GITHUB_OUTPUT"], "a") as output:
+              output.write(f"published={str(published).lower()}\n")
+          PY
+
+      - name: Authenticate with crates.io
+        if: steps.registry.outputs.published != 'true'
+        id: auth
+        uses: rust-lang/crates-io-auth-action@v1
+
+      - name: Publish crate
+        if: steps.registry.outputs.published != 'true'
+        run: cargo publish --locked
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ steps.auth.outputs.token }}
+
   publish:
     name: Publish release
-    needs: [version, rpm, deb]
+    needs: [version, rpm, deb, crates]
+    if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -127,6 +194,9 @@ jobs:
             echo "A fastfetch clone written in Rust."
             echo
             echo '```sh'
+            echo "# Cargo"
+            echo "cargo install ferrisfetch --locked"
+            echo
             echo "# Fedora / RHEL / openSUSE"
             echo "sudo dnf install ./ferrisfetch-${{ needs.version.outputs.version }}-*.x86_64.rpm"
             echo
@@ -149,6 +219,7 @@ jobs:
           else
             gh release create "$TAG" \
               artifacts/*.rpm artifacts/*.deb artifacts/checksums.txt \
+              --target "$GITHUB_SHA" \
               --title "ferrisfetch $TAG" \
               --notes-file "$notes"
           fi

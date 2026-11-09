@@ -122,6 +122,23 @@ cargo fmt
 
 One of the integration tests renders all 531 logos and checks each one resolves.
 
+### Releases
+
+Develop on `dev`, bump the version in `Cargo.toml` and `Cargo.lock`, then merge
+into `main`. The release workflow validates the code, builds RPM/DEB packages,
+publishes to crates.io, and creates the matching GitHub release. Reruns skip
+crate versions already published to crates.io.
+
+Publishing uses crates.io Trusted Publishing, not a stored API token. In the
+crate's settings on crates.io, add a GitHub trusted publisher with:
+
+- Owner: `babichgh`
+- Repository: `ferrisfetch`
+- Workflow filename: `release.yml`
+- Environment: leave empty (the workflow does not use a GitHub environment).
+
+Configure this before pushing a new release to `main`.
+
 ## License
 
 MIT. Logo artwork is © fastfetch contributors, also MIT, bundled under
