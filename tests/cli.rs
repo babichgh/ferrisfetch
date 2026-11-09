@@ -142,6 +142,10 @@ fn help_lists_every_module() {
         "ram",
         "disk",
         "monitor",
+        "shell",
+        "terminal",
+        "de",
+        "wm",
     ] {
         assert!(stdout.contains(m), "{m} missing from --help");
     }
