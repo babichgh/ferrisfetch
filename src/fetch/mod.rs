@@ -1,6 +1,10 @@
-//! Data collection: one entry per requested module (one per connected monitor).
+//! Data collection: one entry per module, monitor, or battery.
 
+pub mod battery;
+pub(crate) mod command;
 pub mod cpu;
+pub mod cpu_usage;
+mod de;
 pub mod disk;
 pub mod gpu;
 pub mod host;
@@ -8,8 +12,13 @@ pub mod kernel;
 pub mod monitor;
 pub mod os;
 pub mod ram;
+mod session;
+mod shell;
+pub mod swap;
+mod terminal;
 pub mod uptime;
 pub mod util;
+mod wm;
 
 use crate::render::Entry;
 use clap::ValueEnum;
@@ -23,10 +32,17 @@ pub enum Module {
     Kernel,
     Uptime,
     Cpu,
+    CpuUsage,
     Gpu,
     Monitor,
     Ram,
     Disk,
+    Battery,
+    Swap,
+    Shell,
+    Terminal,
+    De,
+    Wm,
 }
 
 /// Order used when the user does not pass `--modules`.
@@ -44,28 +60,40 @@ pub const DEFAULT_ORDER: &[Module] = &[
 
 /// Everything the modules read from, refreshed exactly once per run.
 ///
-/// Collection is selective: `gpu` shells out to `nvidia-smi` and `cpu` waits
+/// Collection is selective: `gpu` shells out to `nvidia-smi` and `cpu-usage` waits
 /// for a usage delta, so a run that does not request them skips that cost.
 pub struct Context {
     system: System,
     disks: Disks,
     os_release: Option<os::OsRelease>,
     cpu_usage: Option<f32>,
+    shell: Option<String>,
+    terminal: Option<String>,
+    de: Option<String>,
+    wm: Option<String>,
 }
 
 impl Context {
     /// Refreshes only what `modules` actually needs.
     pub fn collect(modules: &[Module]) -> Self {
-        let mut system = System::new();
-        let needs_cpu = modules.contains(&Module::Cpu);
+        Self::collect_with_cpu_interval(modules, cpu_usage::DEFAULT_INTERVAL)
+    }
 
-        system.refresh_memory();
-        system.refresh_cpu_usage();
+    /// The interval only applies when `cpu-usage` is selected.
+    pub fn collect_with_cpu_interval(modules: &[Module], interval: std::time::Duration) -> Self {
+        let mut system = System::new();
+
+        if modules.contains(&Module::Ram) || modules.contains(&Module::Swap) {
+            system.refresh_memory();
+        }
+        if modules.contains(&Module::Cpu) {
+            system.refresh_cpu_frequency();
+        }
 
         // CPU usage is a delta between two samples, so it needs a second read.
-        let cpu_usage = if needs_cpu {
-            system.refresh_cpu_frequency();
-            std::thread::sleep(std::time::Duration::from_millis(200));
+        let cpu_usage = if modules.contains(&Module::CpuUsage) {
+            system.refresh_cpu_usage();
+            std::thread::sleep(interval.max(sysinfo::MINIMUM_CPU_UPDATE_INTERVAL));
             system.refresh_cpu_usage();
             Some(system.global_cpu_usage())
         } else {
@@ -79,11 +107,36 @@ impl Context {
             Disks::new()
         };
 
+        let parents = if modules
+            .iter()
+            .any(|m| matches!(m, Module::Shell | Module::Terminal))
+        {
+            session::parents()
+        } else {
+            Vec::new()
+        };
+
         Self {
             system,
             disks,
             os_release: os::OsRelease::detect(),
             cpu_usage,
+            shell: modules
+                .contains(&Module::Shell)
+                .then(|| shell::detect(&parents, session::env("SHELL").as_deref()))
+                .flatten(),
+            terminal: modules
+                .contains(&Module::Terminal)
+                .then(|| terminal::detect(&parents, session::env))
+                .flatten(),
+            de: modules
+                .contains(&Module::De)
+                .then(|| de::detect(session::env))
+                .flatten(),
+            wm: modules
+                .contains(&Module::Wm)
+                .then(|| wm::detect(session::env))
+                .flatten(),
         }
     }
 
@@ -98,10 +151,17 @@ impl Context {
             Module::Kernel => kernel::kernel(self)?,
             Module::Uptime => uptime::uptime(self)?,
             Module::Cpu => cpu::cpu(self)?,
+            Module::CpuUsage => cpu_usage::cpu_usage(self)?,
             Module::Gpu => gpu::gpu(self)?,
             Module::Ram => ram::ram(self)?,
             Module::Disk => disk::disk(self)?,
+            Module::Swap => swap::swap(self)?,
+            Module::Battery => return battery::entries().into_iter().next(),
             Module::Monitor => monitor::monitors(self).into_iter().next()?,
+            Module::Shell => self.shell.clone()?,
+            Module::Terminal => self.terminal.clone()?,
+            Module::De => self.de.clone()?,
+            Module::Wm => self.wm.clone()?,
         };
         let value = value.trim();
         if value.is_empty() {
@@ -117,12 +177,10 @@ impl Context {
     pub fn entries(&self, modules: &[Module]) -> Vec<Entry> {
         modules
             .iter()
-            .flat_map(|m| {
-                if *m == Module::Monitor {
-                    monitor_entries(monitor::monitors(self))
-                } else {
-                    self.entry(*m).into_iter().collect()
-                }
+            .flat_map(|m| match m {
+                Module::Monitor => monitor_entries(monitor::monitors(self)),
+                Module::Battery => battery::entries(),
+                _ => self.entry(*m).into_iter().collect(),
             })
             .collect()
     }
@@ -156,10 +214,17 @@ pub fn label(module: Module) -> &'static str {
         Module::Kernel => "Kernel",
         Module::Uptime => "Uptime",
         Module::Cpu => "CPU",
+        Module::CpuUsage => "CPU Usage",
         Module::Gpu => "GPU",
         Module::Ram => "RAM",
         Module::Disk => "Disk",
         Module::Monitor => "Monitor",
+        Module::Battery => "Battery",
+        Module::Swap => "Swap",
+        Module::Shell => "Shell",
+        Module::Terminal => "Terminal",
+        Module::De => "DE",
+        Module::Wm => "WM",
     }
 }
 
@@ -191,10 +256,17 @@ mod tests {
             Module::Kernel,
             Module::Uptime,
             Module::Cpu,
+            Module::CpuUsage,
             Module::Gpu,
             Module::Ram,
             Module::Disk,
             Module::Monitor,
+            Module::Battery,
+            Module::Swap,
+            Module::Shell,
+            Module::Terminal,
+            Module::De,
+            Module::Wm,
         ] {
             assert!(!label(m).is_empty());
         }
@@ -225,6 +297,64 @@ mod tests {
         let ctx = Context::collect(&[]);
         assert!(ctx.entries(&[]).is_empty());
         assert!(ctx.cpu_usage.is_none());
+        assert!(ctx.system.cpus().is_empty());
+        assert_eq!(ctx.system.total_memory(), 0);
+        assert!(ctx.disks.is_empty());
+        assert!(ctx.shell.is_none());
+        assert!(ctx.terminal.is_none());
+        assert!(ctx.de.is_none());
+        assert!(ctx.wm.is_none());
+    }
+
+    #[test]
+    fn cpu_info_does_not_sample_usage_or_refresh_memory() {
+        let ctx = Context::collect(&[Module::Cpu]);
+        assert!(ctx.cpu_usage.is_none());
+        assert!(!ctx.system.cpus().is_empty());
+        assert_eq!(ctx.system.total_memory(), 0);
+    }
+
+    #[test]
+    fn ram_does_not_refresh_cpus() {
+        let ctx = Context::collect(&[Module::Ram]);
+        assert!(ctx.system.cpus().is_empty());
+        assert!(ctx.cpu_usage.is_none());
+    }
+
+    #[test]
+    fn battery_and_swap_are_opt_in() {
+        assert!(!DEFAULT_ORDER.contains(&Module::Battery));
+        assert!(!DEFAULT_ORDER.contains(&Module::Swap));
+        let ctx = Context::collect(&[Module::Battery]);
+        assert_eq!(ctx.system.total_memory(), 0);
+        assert_eq!(ctx.system.total_swap(), 0);
+        assert!(ctx.system.cpus().is_empty());
+    }
+
+    #[test]
+    fn swap_refreshes_memory_without_cpus() {
+        for modules in [&[Module::Swap][..], &[Module::Ram, Module::Swap][..]] {
+            let ctx = Context::collect(modules);
+            assert!(ctx.system.total_memory() > 0);
+            assert!(ctx.system.cpus().is_empty());
+            assert!(ctx.cpu_usage.is_none());
+            assert!(ctx.disks.is_empty());
+        }
+    }
+
+    #[test]
+    fn cpu_usage_is_opt_in() {
+        assert!(!DEFAULT_ORDER.contains(&Module::CpuUsage));
+        let ctx = Context::collect(&[Module::CpuUsage]);
+        assert!(ctx.cpu_usage.is_some());
+        assert_eq!(ctx.system.total_memory(), 0);
+    }
+
+    #[test]
+    fn session_modules_are_opt_in() {
+        for module in [Module::Shell, Module::Terminal, Module::De, Module::Wm] {
+            assert!(!DEFAULT_ORDER.contains(&module));
+        }
     }
 
     #[test]

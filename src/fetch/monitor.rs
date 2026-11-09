@@ -55,14 +55,86 @@ fn parse_hyprland(raw: &str) -> Option<Vec<Monitor>> {
 }
 
 fn hyprland() -> Option<Vec<Monitor>> {
-    let output = std::process::Command::new("hyprctl")
-        .args(["monitors", "-j"])
-        .output()
-        .ok()?;
-    output
-        .status
-        .success()
-        .then(|| parse_hyprland(&String::from_utf8_lossy(&output.stdout)))?
+    parse_hyprland(&super::command::output("hyprctl", &["monitors", "-j"])?)
+}
+
+/// Sway's current_mode is in physical pixels, unlike the scaled logical rect.
+fn parse_sway(raw: &str) -> Option<Vec<Monitor>> {
+    let outputs = serde_json::from_str::<serde_json::Value>(raw).ok()?;
+    Some(
+        outputs
+            .as_array()?
+            .iter()
+            .filter(|m| m["active"] == true)
+            .filter_map(|m| {
+                let name = m["name"].as_str()?.to_owned();
+                let mode = &m["current_mode"];
+                let width = mode["width"].as_u64()?;
+                let height = mode["height"].as_u64()?;
+                if name.is_empty() || width == 0 || height == 0 {
+                    return None;
+                }
+                Some(Monitor {
+                    name,
+                    width,
+                    height,
+                    width_mm: m["physical_width"].as_u64().unwrap_or(0),
+                    height_mm: m["physical_height"].as_u64().unwrap_or(0),
+                    hz: mode["refresh"].as_f64().unwrap_or(0.0) / 1000.0,
+                })
+            })
+            .collect(),
+    )
+}
+
+fn sway() -> Option<Vec<Monitor>> {
+    parse_sway(&super::command::output(
+        "swaymsg",
+        &["-t", "get_outputs", "-r"],
+    )?)
+}
+
+#[derive(Debug, PartialEq, Eq)]
+enum Backend {
+    Hyprland,
+    Sway,
+    Xrandr,
+}
+
+/// Local monitor routing only; do not probe unrelated compositor sockets or
+/// fall back to XWayland after a native Wayland backend fails.
+fn select_backend(env: impl Fn(&str) -> Option<String>) -> Option<Backend> {
+    let present = |key| env(key).is_some_and(|value| !value.trim().is_empty());
+    if env("XDG_SESSION_TYPE").is_some_and(|value| value.eq_ignore_ascii_case("x11")) {
+        return present("DISPLAY").then_some(Backend::Xrandr);
+    }
+    let desktops = [env("XDG_CURRENT_DESKTOP"), env("XDG_SESSION_DESKTOP")];
+    let named = |name: &str| {
+        desktops.iter().flatten().any(|value| {
+            value
+                .split(':')
+                .any(|token| token.eq_ignore_ascii_case(name))
+        })
+    };
+    // Desktop names disambiguate inherited sockets from another compositor.
+    match (named("Hyprland"), named("sway")) {
+        (true, false) => return Some(Backend::Hyprland),
+        (false, true) => return Some(Backend::Sway),
+        (true, true) => return None,
+        _ => {}
+    }
+    match (present("HYPRLAND_INSTANCE_SIGNATURE"), present("SWAYSOCK")) {
+        (true, false) => return Some(Backend::Hyprland),
+        (false, true) => return Some(Backend::Sway),
+        (true, true) => return None,
+        _ => {}
+    }
+    if present("WAYLAND_DISPLAY")
+        || env("XDG_SESSION_TYPE").is_some_and(|value| value.eq_ignore_ascii_case("wayland"))
+    {
+        return None;
+    }
+    present("DISPLAY").then_some(Backend::Xrandr)
 }
 
 /// XRandR marks the current refresh rate with `*`; the connector line gives
@@ -125,19 +197,20 @@ fn parse_xrandr(raw: &str) -> Vec<Monitor> {
 }
 
 fn xrandr() -> Option<Vec<Monitor>> {
-    let output = std::process::Command::new("xrandr")
-        .arg("--query")
-        .output()
-        .ok()?;
-    output
-        .status
-        .success()
-        .then(|| parse_xrandr(&String::from_utf8_lossy(&output.stdout)))
+    Some(parse_xrandr(&super::command::output(
+        "xrandr",
+        &["--query"],
+    )?))
 }
 
 pub fn monitors(_ctx: &Context) -> Vec<String> {
-    hyprland()
-        .or_else(xrandr)
+    let monitors = match select_backend(|key| std::env::var(key).ok()) {
+        Some(Backend::Hyprland) => hyprland(),
+        Some(Backend::Sway) => sway(),
+        Some(Backend::Xrandr) => xrandr(),
+        None => None,
+    };
+    monitors
         .unwrap_or_default()
         .iter()
         .map(Monitor::display)
@@ -147,6 +220,112 @@ pub fn monitors(_ctx: &Context) -> Vec<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn sway_uses_active_current_pixel_mode_and_millihertz() {
+        let monitors = parse_sway(include_str!("../../tests/fixtures/sway-outputs.json")).unwrap();
+        let lines: Vec<_> = monitors.iter().map(Monitor::display).collect();
+        assert_eq!(
+            lines,
+            [
+                "DP-1: 3840x2160 (24.0\") @ 59.94 Hz",
+                "eDP-1: 2560x1600 @ 120.00 Hz",
+            ]
+        );
+    }
+
+    #[test]
+    fn sway_rejects_invalid_outputs_and_json() {
+        for raw in ["not json", "{}", "null", "[{}"] {
+            assert!(parse_sway(raw).is_none());
+        }
+        for fields in [
+            "",
+            ",\"current_mode\":null",
+            ",\"current_mode\":{\"width\":0,\"height\":1080}",
+            ",\"current_mode\":{\"width\":1920,\"height\":-1}",
+            ",\"current_mode\":{\"width\":\"1920\",\"height\":1080}",
+        ] {
+            let raw = format!(r#"[{{"name":"DP-1","active":true{fields}}}]"#);
+            assert!(parse_sway(&raw).unwrap().is_empty(), "{raw}");
+        }
+        for physical in [
+            "",
+            r#", "physical_width":0,"physical_height":300"#,
+            r#", "physical_width":530,"physical_height":"bad""#,
+            r#", "physical_width":530,"physical_height":-1"#,
+        ] {
+            let raw = format!(
+                r#"[{{"name":"DP-1","active":true,"current_mode":{{"width":1920,"height":1080,"refresh":0}}{physical}}}]"#
+            );
+            assert_eq!(parse_sway(&raw).unwrap()[0].display(), "DP-1: 1920x1080");
+        }
+        assert!(
+            parse_sway(r#"[{"name":"DP-1","current_mode":{"width":1920,"height":1080}}]"#)
+                .unwrap()
+                .is_empty()
+        );
+    }
+
+    #[test]
+    fn monitor_backend_selection_uses_explicit_environment() {
+        use Backend::*;
+        type Case<'a> = (&'a [(&'a str, &'a str)], Option<Backend>);
+        let cases: &[Case<'_>] = &[
+            (&[], None),
+            (&[("DISPLAY", ":1")], Some(Xrandr)),
+            (&[("SWAYSOCK", "/sway")], Some(Sway)),
+            (
+                &[("HYPRLAND_INSTANCE_SIGNATURE", "instance")],
+                Some(Hyprland),
+            ),
+            (&[("XDG_CURRENT_DESKTOP", "GNOME:sway")], Some(Sway)),
+            (&[("XDG_SESSION_DESKTOP", "Hyprland")], Some(Hyprland)),
+            (&[("SWAYSOCK", ""), ("DISPLAY", "")], None),
+            (&[("WAYLAND_DISPLAY", "wayland-1"), ("DISPLAY", ":1")], None),
+            (&[("XDG_SESSION_TYPE", "wayland"), ("DISPLAY", ":1")], None),
+            (
+                &[
+                    ("SWAYSOCK", "/sway"),
+                    ("HYPRLAND_INSTANCE_SIGNATURE", "instance"),
+                ],
+                None,
+            ),
+            (&[("XDG_CURRENT_DESKTOP", "sway:Hyprland")], None),
+            (
+                &[
+                    ("SWAYSOCK", "/sway"),
+                    ("HYPRLAND_INSTANCE_SIGNATURE", "instance"),
+                    ("XDG_CURRENT_DESKTOP", "sway"),
+                ],
+                Some(Sway),
+            ),
+            (
+                &[("SWAYSOCK", "/sway"), ("XDG_CURRENT_DESKTOP", "Hyprland")],
+                Some(Hyprland),
+            ),
+            (
+                &[
+                    ("XDG_SESSION_TYPE", "x11"),
+                    ("DISPLAY", ":1"),
+                    ("SWAYSOCK", "/stale"),
+                    ("WAYLAND_DISPLAY", "stale"),
+                ],
+                Some(Xrandr),
+            ),
+            (&[("XDG_SESSION_TYPE", "x11"), ("SWAYSOCK", "/stale")], None),
+        ];
+        for (vars, expected) in cases {
+            assert_eq!(
+                select_backend(|key| vars
+                    .iter()
+                    .find(|(k, _)| *k == key)
+                    .map(|(_, v)| (*v).to_owned())),
+                *expected,
+                "{vars:?}"
+            );
+        }
+    }
 
     #[test]
     fn hyprland_uses_current_mode_and_skips_disabled() {

@@ -157,6 +157,104 @@ mod tests {
     }
 
     #[test]
+    fn aligns_wide_combining_and_emoji_keys() {
+        let entries = [
+            entry("日本", "A"),
+            entry("e\u{301}", "B"),
+            entry("👩‍💻", "C"),
+            entry("OS", "D"),
+        ];
+        for colors in [false, true] {
+            let style = Style {
+                colors,
+                ..Default::default()
+            };
+            let out = Layout::default().render(None, &entries, &style, None);
+            if !colors {
+                assert_eq!(out, "日本 : A\ne\u{301}    : B\n👩‍💻   : C\nOS   : D\n");
+            }
+            for line in out.lines() {
+                let (prefix, _) = line.split_once(':').unwrap();
+                assert_eq!(visible_len(prefix), 5, "misaligned: {line:?}");
+            }
+        }
+    }
+
+    #[test]
+    fn pads_wide_logo_lines_to_the_same_text_column() {
+        let style = Style {
+            colors: false,
+            ..Default::default()
+        };
+        let art = logo(&["日本", "X"]);
+        assert_eq!(art.width(), 4);
+        let out = Layout::default().render(
+            Some(&art),
+            &[entry("日本", "A"), entry("OS", "B")],
+            &style,
+            None,
+        );
+        assert_eq!(out, "日本   日本 : A\nX      OS   : B\n");
+    }
+
+    #[test]
+    fn every_logo_aligns_its_text_column_with_or_without_colour() {
+        let style = Style {
+            colors: false,
+            ..Default::default()
+        };
+        let layout = Layout::default();
+        for raw in crate::logo::LOGOS {
+            for color in [false, true] {
+                let art = Logo::new(raw.art, raw.colors, color);
+                let entries = vec![entry("OS", "test"); art.lines().len()];
+                let out = layout.render(Some(&art), &entries, &style, None);
+                let text_column = if art.width() == 0 {
+                    0
+                } else {
+                    art.width() + layout.gap
+                };
+                // Out-of-palette markers can legitimately make colored and
+                // plain art differ; check each actual rendering independently.
+                for line in out.lines() {
+                    let prefix = line.strip_suffix("OS : test").unwrap();
+                    assert_eq!(
+                        visible_len(prefix),
+                        text_column,
+                        "{:?}: {line:?}",
+                        raw.names
+                    );
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn unicode_width_controls_logo_visibility_at_the_exact_boundary() {
+        let art = logo(&["日本"]);
+        for colors in [false, true] {
+            let style = Style {
+                colors,
+                ..Default::default()
+            };
+            // Logo (4) + gap (3) + key (2) + padding/separator/space (3),
+            // then the value's display width, not its code point count.
+            for (value, columns) in [("日本", 16), ("e\u{301}", 13), ("👩‍💻", 14)] {
+                let entries = [entry("OS", value)];
+                let layout = Layout::default();
+                let fits = layout.render(Some(&art), &entries, &style, Some(columns));
+                assert!(fits.starts_with("日本"), "logo should fit: {fits:?}");
+                assert_eq!(visible_len(fits.trim_end_matches('\n')), columns);
+                let narrow = layout.render(Some(&art), &entries, &style, Some(columns - 1));
+                assert!(
+                    !narrow.starts_with("日本"),
+                    "logo should be hidden: {narrow:?}"
+                );
+            }
+        }
+    }
+
+    #[test]
     fn plain_output_has_no_escapes() {
         let style = Style {
             colors: false,
