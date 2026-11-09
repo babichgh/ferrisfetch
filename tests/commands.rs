@@ -31,8 +31,12 @@ impl Tools {
     }
 
     fn run(&self, module: &str) -> String {
+        self.run_args(&["--pipe", "--modules", module])
+    }
+
+    fn run_args(&self, args: &[&str]) -> String {
         let output = Command::new(env!("CARGO_BIN_EXE_ferrisfetch"))
-            .args(["--pipe", "--modules", module])
+            .args(args)
             .env("PATH", &self.0)
             .env("LC_ALL", "ferrisfetch-test-invalid-locale")
             .env_remove("HYPRLAND_INSTANCE_SIGNATURE")
@@ -62,9 +66,9 @@ fn gpu_falls_back_after_a_timeout() {
     tools.add("nvidia-smi", "exec /bin/sleep 30");
     tools.add(
         "lspci",
-        "printf '00:02.0 VGA compatible controller: Fixture GPU\\n'",
+        "printf 'abcd:01:00.0 VGA compatible controller: Fixture GPU\\n'",
     );
-    assert_eq!(tools.run("gpu"), "GPU: Fixture GPU\n");
+    assert_gpu_contains(&tools.run("gpu"), "Fixture GPU");
 }
 
 #[test]
@@ -72,11 +76,11 @@ fn gpu_falls_back_after_failure_or_signal() {
     let tools = Tools::new();
     tools.add(
         "lspci",
-        "printf '00:02.0 VGA compatible controller: Fixture GPU\\n'",
+        "printf 'abcd:01:00.0 VGA compatible controller: Fixture GPU\\n'",
     );
     for script in ["printf partial; exit 1", "kill -TERM $$"] {
         tools.add("nvidia-smi", script);
-        assert_eq!(tools.run("gpu"), "GPU: Fixture GPU\n");
+        assert_gpu_contains(&tools.run("gpu"), "Fixture GPU");
     }
 }
 
@@ -108,10 +112,72 @@ fn successful_gpu_tool_receives_arguments_and_fixed_locale() {
         r#"
 [ "$LC_ALL" = C ] && [ "$LANG" = C ] || exit 1
 [ "$#" -eq 2 ] || exit 1
-[ "$1" = '--query-gpu=name,memory.total' ] || exit 1
+[ "$1" = '--query-gpu=pci.bus_id,name,memory.total' ] || exit 1
 [ "$2" = '--format=csv,noheader,nounits' ] || exit 1
-printf 'Fixture NVIDIA, 1024\n'
+printf '0000abcd:01:00.0, Fixture NVIDIA, 1024\n'
 "#,
     );
-    assert_eq!(tools.run("gpu"), "GPU: Fixture NVIDIA (1.0 GiB)\n");
+    assert_gpu_contains(&tools.run("gpu"), "Fixture NVIDIA (1.0 GiB)");
+}
+
+// The CLI always sees real sysfs, which can contain additional adapters. Use
+// fixture-only PCI domains and assert contracts without assuming host hardware.
+fn assert_gpu_contains(output: &str, card: &str) {
+    assert!(output.starts_with("GPU: "), "{output}");
+    assert_eq!(output.lines().count(), 1, "{output}");
+    assert_eq!(output.matches(card).count(), 1, "{output}");
+}
+
+#[test]
+fn hybrid_gpu_enrichment_preserves_single_entry_and_json_string() {
+    let tools = Tools::new();
+    tools.add(
+        "lspci",
+        r#"
+[ "$#" -eq 1 ] && [ "$1" = '-D' ] || exit 1
+printf 'abcd:02:00.0 3D controller: Fixture NVIDIA\nabcd:01:00.0 VGA compatible controller: Fixture Intel\n'
+"#,
+    );
+    tools.add(
+        "nvidia-smi",
+        "printf '0000ABCD:02:00.0, Enriched NVIDIA, 4096\\n'",
+    );
+    let pipe = tools.run_args(&["--pipe", "--modules", "kernel,gpu,uptime"]);
+    let lines: Vec<_> = pipe.lines().collect();
+    assert_eq!(lines.len(), 3, "{pipe}");
+    assert!(lines[0].starts_with("Kernel: "));
+    assert!(lines[2].starts_with("Uptime: "));
+    assert_gpu_contains(lines[1], "Fixture Intel + Enriched NVIDIA (4.0 GiB)");
+    assert!(!pipe.contains("Fixture NVIDIA"));
+
+    let json: serde_json::Value =
+        serde_json::from_str(&tools.run_args(&["--json", "--modules", "gpu"])).unwrap();
+    assert_eq!(json.as_object().unwrap().len(), 1);
+    assert_eq!(json["gpu"].as_str().unwrap(), &lines[1][5..]);
+}
+
+#[test]
+fn gpu_commands_are_not_called_unless_gpu_is_selected() {
+    let tools = Tools::new();
+    let marker = tools.0.join("called");
+    let script = format!("printf called > '{}'", marker.display());
+    tools.add("lspci", &script);
+    tools.add("nvidia-smi", &script);
+    assert!(tools.run("kernel").starts_with("Kernel: "));
+    assert!(!marker.exists());
+    tools.run_args(&["--pipe", "--hide-modules", "gpu"]);
+    assert!(!marker.exists());
+    tools.run("gpu");
+    assert!(marker.exists());
+}
+
+#[test]
+fn lspci_failure_does_not_discard_nvidia_data() {
+    let tools = Tools::new();
+    tools.add("lspci", "printf 'partial output'; exit 1");
+    tools.add(
+        "nvidia-smi",
+        "printf '0000abcd:01:00.0, Fixture NVIDIA, [N/A]\\n'",
+    );
+    assert_gpu_contains(&tools.run("gpu"), "Fixture NVIDIA");
 }

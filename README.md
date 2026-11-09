@@ -12,7 +12,7 @@ to an ASCII logo, with selectable modules, automatic colours, and plain-text or
 JSON output for scripts
 
 - **531 built-in logos**, vendored from Fastfetch
-- **14 system information modules**, shown in the order you choose
+- **16 system information modules**, shown in the order you choose
 - **Terminal-aware layout** that hides the logo when space is limited
 - **Script-friendly output** with `--pipe`, `--json`, and automatic colour detection
 
@@ -92,6 +92,8 @@ ferrisfetch --help
 | `monitor` | Active displays via Hyprland, Sway, or XRandR; current resolution, refresh rate, and size when available |
 | `ram` | Used and total memory |
 | `disk` | Used and available space, usage percentage, and filesystem type |
+| `battery` | Battery charge percentage and charging/discharging/full status when available (opt-in, Linux sysfs) |
+| `swap` | Used and total swap, with usage percentage (opt-in; omitted when total swap is zero) |
 | `shell` | Current shell name from parent processes; login shell fallback (opt-in) |
 | `terminal` | Terminal emulator or tmux/screen endpoint name (opt-in) |
 | `de` | Desktop environment name from XDG session variables (opt-in) |
@@ -99,7 +101,8 @@ ferrisfetch --help
 
 Unavailable information is omitted rather than displayed as `unknown`
 
-The default output excludes `cpu-usage`, `shell`, `terminal`, `de`, and `wm`.
+The default output excludes `cpu-usage`, `shell`, `terminal`, `de`, `wm`,
+`battery`, and `swap`.
 To include sampled usage, select it explicitly:
 
 ```sh
@@ -112,6 +115,27 @@ when `cpu-usage` is not selected.
 
 **Unreleased output change (after 0.3.1):** `cpu` no longer includes the usage percentage.
 Use `cpu-usage` for that value; in JSON it is a separate `cpu_usage` key.
+
+Select batteries and swap explicitly, for example:
+
+```sh
+ferrisfetch --pipe --modules battery,ram,swap
+ferrisfetch --json --modules battery,swap
+```
+
+On Linux, `battery` reads devices of type `Battery` from `/sys/class/power_supply`
+without external commands or root. Each available battery has a separate
+`Battery <device>` key (for example `Battery BAT0`, or `battery_bat0` in JSON),
+sorted lexicographically by sysfs device name. These identifiers do not depend on
+how many batteries are present. Values look like `42% (charging)`; percentage or
+recognized status can also appear alone. Missing, unreadable, absent, or entirely
+invalid batteries are omitted. Other platforms currently omit this module.
+No runtime estimate, health, serial number, or temperature is collected.
+
+`swap` uses sysinfo and shares a single memory refresh with `ram` when both are
+selected. Values look like `1.0 GiB / 4.0 GiB (25%)`; the JSON key is `swap` with
+a string value. If total swap is zero, the entry is omitted (including from JSON),
+not shown as `unknown` or `0 / 0`.
 
 ### Optional session modules
 
@@ -221,8 +245,23 @@ vendored from Fastfetch and retain their original MIT attribution
 
 ### Why is a module missing from the output?
 
-Modules are only shown when their data is available. GPU detection tries
-`nvidia-smi`, then `lspci`, then `/sys/class/drm`. Monitor detection queries
+Modules are only shown when their data is available. GPU detection enumerates
+Linux PCI display controllers in `/sys/bus/pci/devices`, adds names from
+`lspci -D`, and enriches matching devices with names and total memory from
+`nvidia-smi`. Devices are matched by normalized PCI address and sorted by
+domain, bus, device, and function; identical models at different addresses are
+kept, including Intel/AMD graphics alongside NVIDIA. All adapters remain in one
+`GPU` entry (for example, `2x Intel GPU + NVIDIA GPU`), and JSON's `gpu` value
+remains a string.
+
+Either command can supply devices when sysfs is unavailable, and sysfs provides
+vendor-level names if the tools fail or are missing. Unavailable memory is
+omitted. Detection runs only when `gpu` is selected. Non-PCI GPUs are not
+enumerated; command rows without a valid PCI address cannot be matched and are
+ignored. A restricted container or unavailable driver/tool may therefore expose
+only partial hardware information. No GPU temperature or utilization is queried.
+
+Monitor detection queries
 Hyprland (`hyprctl monitors -j`), Sway (`swaymsg -t get_outputs -r`), or XRandR
 (`xrandr --query`), only when `monitor` is selected. Sway reports active outputs
 with a valid `current_mode`: its pixel resolution is used, not the scaled logical

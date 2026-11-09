@@ -142,6 +142,8 @@ fn help_lists_every_module() {
         "ram",
         "disk",
         "monitor",
+        "battery",
+        "swap",
         "shell",
         "terminal",
         "de",
@@ -205,6 +207,68 @@ fn invalid_cpu_usage_interval_exits_with_error() {
 fn monitor_module_is_selectable_even_on_headless_hosts() {
     let (_, stderr, ok) = run(&["--pipe", "--modules", "monitor"]);
     assert!(ok, "stderr: {stderr}");
+}
+
+#[test]
+fn battery_and_swap_pipe_selection_and_order() {
+    // Hardware-dependent entries may be absent; OS/RAM anchor the order.
+    let (stdout, stderr, ok) = run(&["--pipe", "--modules", "os,battery,ram,swap"]);
+    assert!(ok, "stderr: {stderr}");
+    assert!(!stdout.contains('\x1b'));
+    let keys: Vec<_> = stdout
+        .lines()
+        .map(|line| line.split_once(": ").unwrap().0)
+        .collect();
+    assert_eq!(keys[0], "OS");
+    let ram = keys.iter().position(|key| *key == "RAM").unwrap();
+    assert!(keys[1..ram].iter().all(|key| key.starts_with("Battery ")));
+    assert!(keys[ram + 1..].iter().all(|key| *key == "Swap"));
+
+    let (stdout, stderr, ok) = run(&["--pipe", "--modules", "swap,battery"]);
+    assert!(ok, "stderr: {stderr}");
+    let mut battery_seen = false;
+    for line in stdout.lines() {
+        if line.starts_with("Battery ") {
+            battery_seen = true;
+        } else {
+            assert!(line.starts_with("Swap: "), "got {stdout}");
+            assert!(!battery_seen, "got {stdout}");
+        }
+    }
+}
+
+#[test]
+fn battery_and_swap_json_preserves_string_object_contract() {
+    let (stdout, stderr, ok) = run(&["--json", "--modules", "battery,swap"]);
+    assert!(ok, "stderr: {stderr}");
+    assert!(!stdout.contains('\x1b'));
+    let json: serde_json::Value = serde_json::from_str(&stdout).unwrap();
+    for (key, value) in json.as_object().unwrap() {
+        assert!(key == "swap" || key.starts_with("battery_"));
+        let value = value.as_str().unwrap();
+        assert!(!value.is_empty());
+        assert!(!value.contains("unknown"));
+        if key == "swap" {
+            assert!(value.contains(" / ") && value.ends_with("%)"));
+        }
+    }
+}
+
+#[test]
+fn battery_and_swap_are_not_in_default_output() {
+    let (stdout, stderr, ok) = run(&["--pipe"]);
+    assert!(ok, "stderr: {stderr}");
+    assert!(!stdout.contains("Battery "));
+    assert!(!stdout.contains("Swap:"));
+    let (stdout, stderr, ok) = run(&["--json", "--hide-modules", "battery,swap"]);
+    assert!(ok, "stderr: {stderr}");
+    let json: serde_json::Value = serde_json::from_str(&stdout).unwrap();
+    assert!(
+        json.as_object()
+            .unwrap()
+            .keys()
+            .all(|key| key != "swap" && !key.starts_with("battery_"))
+    );
 }
 
 #[test]
