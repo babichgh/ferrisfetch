@@ -3,15 +3,32 @@
 use std::process::Command;
 
 fn run(args: &[&str]) -> (String, String, bool) {
-    let out = Command::new(env!("CARGO_BIN_EXE_rfetch"))
+    let out = Command::new(env!("CARGO_BIN_EXE_ferrisfetch"))
         .args(args)
         .output()
-        .expect("rfetch binary should be runnable");
+        .expect("ferrisfetch binary should be runnable");
     (
         String::from_utf8_lossy(&out.stdout).to_string(),
         String::from_utf8_lossy(&out.stderr).to_string(),
         out.status.success(),
     )
+}
+
+#[test]
+fn version_uses_project_name() {
+    let (stdout, stderr, ok) = run(&["--version"]);
+    assert!(ok, "stderr: {stderr}");
+    assert_eq!(
+        stdout.trim(),
+        concat!("ferrisfetch ", env!("CARGO_PKG_VERSION"))
+    );
+}
+
+#[test]
+fn help_uses_project_name() {
+    let (stdout, stderr, ok) = run(&["--help"]);
+    assert!(ok, "stderr: {stderr}");
+    assert!(stdout.contains("Usage: ferrisfetch"), "got {stdout}");
 }
 
 #[test]

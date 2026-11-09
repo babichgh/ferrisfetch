@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Builds rfetch-<version>-x86_64.deb.
+# Builds ferrisfetch_<version>_amd64.deb.
 #
 # Assembles the DEBIAN tree by hand and calls dpkg-deb. Kept as a script rather
 # than a Cargo helper so the CI container needs nothing but dpkg-dev.
@@ -37,10 +37,10 @@ echo "==> building release binary"
 cargo fetch --locked
 cargo build --release --locked
 
-install -Dm 0755 target/release/rfetch "$STAGE/usr/bin/rfetch"
-install -Dm 0644 LICENSE          "$STAGE/usr/share/doc/rfetch/LICENSE"
-install -Dm 0644 LICENSE-fastfetch "$STAGE/usr/share/doc/rfetch/LICENSE-fastfetch"
-install -Dm 0644 README.md        "$STAGE/usr/share/doc/rfetch/README.md"
+install -Dm 0755 target/release/ferrisfetch "$STAGE/usr/bin/ferrisfetch"
+install -Dm 0644 LICENSE          "$STAGE/usr/share/doc/ferrisfetch/LICENSE"
+install -Dm 0644 LICENSE-fastfetch "$STAGE/usr/share/doc/ferrisfetch/LICENSE-fastfetch"
+install -Dm 0644 README.md        "$STAGE/usr/share/doc/ferrisfetch/README.md"
 
 # Keep the metadata in sync with the spec so both packages describe the same
 # release.
@@ -53,12 +53,12 @@ printf '\n' >> "$STAGE/DEBIAN/control"
 chmod 0644 "$STAGE/DEBIAN/control"
 
 # gzipped man page, if one has been generated; optional.
-if [[ -f man/rfetch.1 ]]; then
-  install -Dm 0644 man/rfetch.1 "$STAGE/usr/share/man/man1/rfetch.1"
-  gzip -9n "$STAGE/usr/share/man/man1/rfetch.1"
+if [[ -f man/ferrisfetch.1 ]]; then
+  install -Dm 0644 man/ferrisfetch.1 "$STAGE/usr/share/man/man1/ferrisfetch.1"
+  gzip -9n "$STAGE/usr/share/man/man1/ferrisfetch.1"
 fi
 
 mkdir -p "$OUTDIR"
-DEB="$OUTDIR/rfetch_${VERSION}_${ARCH}.deb"
+DEB="$OUTDIR/ferrisfetch_${VERSION}_${ARCH}.deb"
 dpkg-deb --root-owner-group --build "$STAGE" "$DEB" >/dev/null
 echo "==> $DEB"

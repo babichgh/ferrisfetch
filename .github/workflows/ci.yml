@@ -94,17 +94,17 @@ jobs:
           set -euo pipefail
           mkdir -p /work/{SOURCES,SPECS,BUILD,RPMS,SRPMS,BUILDROOT}
           tar --exclude=.git --exclude=target \
-              --transform "s,^,rfetch-$V/," \
-              -czf "/work/SOURCES/rfetch-$V.tar.gz" .
+              --transform "s,^,ferrisfetch-$V/," \
+              -czf "/work/SOURCES/ferrisfetch-$V.tar.gz" .
           rpmbuild -ba \
             --define "_topdir /work" \
-            --define "rfetch_version $V" \
+            --define "ferrisfetch_version $V" \
             --define "_sourcedir /work/SOURCES" \
             --define "_specdir $GITHUB_WORKSPACE/packaging" \
-            packaging/rfetch.spec
+            packaging/ferrisfetch.spec
           mkdir -p dist
           # Only the binary package; debuginfo/debugsource are Fedora-internal.
-          cp /work/RPMS/x86_64/rfetch-"$V"-*.x86_64.rpm dist/
+          cp /work/RPMS/x86_64/ferrisfetch-"$V"-*.x86_64.rpm dist/
           ls -l dist/
 
       - name: Build deb
