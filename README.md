@@ -1,44 +1,137 @@
 # ferrisfetch
 
-A fastfetch clone written in Rust.
+[![CI](https://img.shields.io/github/actions/workflow/status/babichgh/ferrisfetch/ci.yml?branch=dev&label=CI)](https://github.com/babichgh/ferrisfetch/actions/workflows/ci.yml)
+[![GitHub release](https://img.shields.io/github/v/release/babichgh/ferrisfetch?logo=github)](https://github.com/babichgh/ferrisfetch/releases/latest)
+[![crates.io](https://img.shields.io/crates/v/ferrisfetch?logo=rust)](https://crates.io/crates/ferrisfetch)
+[![Downloads](https://img.shields.io/crates/d/ferrisfetch)](https://crates.io/crates/ferrisfetch)
+[![License](https://img.shields.io/github/license/babichgh/ferrisfetch)](LICENSE)
 
-```
-             .',;::::;,'.                OS     : Fedora Linux 44 (KDE Plasma Desktop Edition)
-         .';:cccccccccccc:;,.            Host   : babich@fedora
-      .;cccccccccccccccccccccc;.         Kernel : Linux 7.2.5-200.fc44.x86_64
-    .:cccccccccccccccccccccccccc:.       Uptime : 5h 23m
-  .;ccccccccccccc;.:dddl:.;ccccccc;.     CPU    : Intel(R) Xeon(R) CPU E5-2680 v3 (12) @ 2.97 GHz : 1%
- .:ccccccccccccc;OWMKOOXMWd;ccccccc:.    GPU    : NVIDIA Corporation TU116
-.:ccccccccccccc;KMMc;cc;xMMc;ccccccc:.   Monitor  : DP-1: 1920x1080 (24.0") @ 60.00 Hz
-,cccccccccccccc;MMM.;cc;;WW:;cccccccc,   Monitor 2: HDMI-A-1: 1024x768 (14.9") @ 75.03 Hz
-:cccccccccccccc;MMM.;cccccccccccccccc:   RAM      : 5.8 GiB / 15.4 GiB (37%)
-:ccccccc;oxOOOo;MMM000k.;cccccccccccc:   Disk     : 289.2 GiB / 155.3 GiB (65%) - btrfs
-cccccc;MMKxdd:;MMMkddc.;cccccccccccc;
-ccccc;XMO';cccc;MMM.;cccccccccccccccc'
-ccccc;MMo;ccccc;MMW.;ccccccccccccccc;
-ccccc;MNc.ccc.xMMd;ccccccccccccccc;
-cccccc;dNMWXXXWM0:;cccccccccccccc:,
-```
+**ferrisfetch** is a [Fastfetch](https://github.com/fastfetch-cli/fastfetch)-inspired
+system information tool written in Rust. It displays your system's details next
+to an ASCII logo, with selectable modules, automatic colours, and plain-text or
+JSON output for scripts
 
-## Install
+- **531 built-in logos**, vendored from Fastfetch
+- **9 system information modules**, shown in the order you choose
+- **Terminal-aware layout** that hides the logo when space is limited
+- **Script-friendly output** with `--pipe`, `--json`, and automatic colour detection
 
-From [crates.io](https://crates.io/crates/ferrisfetch):
+> Linux is the primary target. Prebuilt RPM and DEB packages target x86-64;
+> module availability depends on your hardware and desktop session
+
+## Preview
+
+![ferrisfetch displaying system information alongside the Omarchy logo](screenshots/preview.png)
+
+## Installation
+
+### Cargo
+
+Install the latest published version from [crates.io](https://crates.io/crates/ferrisfetch)
+using a recent stable Rust toolchain:
 
 ```sh
-cargo install ferrisfetch --locked
+cargo install ferrisfetch
 ```
 
-Or build from a local checkout:
+### Linux packages
+
+Download the appropriate package from the
+[latest GitHub release](https://github.com/babichgh/ferrisfetch/releases/latest),
+then run the corresponding command in your download directory:
+
+| Distribution | Package | Install |
+|---|---|---|
+| Fedora | `.x86_64.rpm` | `sudo dnf install ./ferrisfetch-*.x86_64.rpm` |
+| Debian / Ubuntu | `_amd64.deb` | `sudo apt install ./ferrisfetch_*_amd64.deb` |
+
+Release assets include `checksums.txt` for SHA-256 verification. These are local
+package installs; ferrisfetch is not currently advertised as a package in your
+distribution's official repositories
+
+## Build from source
+
+With Git and a recent stable Rust toolchain installed:
 
 ```sh
-cargo install --path . --locked
+git clone https://github.com/babichgh/ferrisfetch.git
+cd ferrisfetch
+cargo install --path .
 ```
+
+To build without installing, run `cargo build --release --locked`. The binary
+will be at `target/release/ferrisfetch`
 
 ## Usage
 
+```sh
+# Display system information with your distribution's logo
+ferrisfetch
+
+# Choose modules and their order
+ferrisfetch --modules os,host,kernel,cpu,ram
+
+# Hide modules from the default output
+ferrisfetch --hide-modules gpu,monitor
+
+# Explore the available options
+ferrisfetch --help
 ```
-ferrisfetch [OPTIONS]
+
+### Available modules
+
+| Module | Information |
+|---|---|
+| `os` | Operating system / distribution |
+| `host` | User and hostname |
+| `kernel` | Kernel name and version |
+| `uptime` | Time since boot |
+| `cpu` | Processor and sampled usage |
+| `gpu` | Detected graphics hardware |
+| `monitor` | Active displays, resolution, refresh rate, and size when available |
+| `ram` | Used and total memory |
+| `disk` | Used and available space, usage percentage, and filesystem type |
+
+Unavailable information is omitted rather than displayed as `unknown`
+
+### Output for scripts
+
+```sh
+ferrisfetch --pipe
+ferrisfetch --pipe --modules ram | grep '^RAM:'
+ferrisfetch --json
+ferrisfetch --json --modules kernel | jq .kernel
 ```
+
+`--pipe` produces plain `Key: value` lines. `--json` produces a JSON object.
+Neither output mode includes the logo or ANSI colour codes
+
+## Customization
+
+ferrisfetch is configured through command-line options; it does not currently
+read Fastfetch's JSONC configuration files
+
+```sh
+# Find a built-in logo by name
+ferrisfetch --logo-list | grep nix
+
+# Override the automatically selected logo
+ferrisfetch --logo arch
+
+# Hide the logo or disable colours
+ferrisfetch --logo-off
+ferrisfetch --no-color
+
+# Use the alternative separator (requires a Nerd Font)
+ferrisfetch --nerd-separator
+```
+
+The default logo is selected from your distribution's `/etc/os-release` ID.
+Key colours follow the logo palette. The logo is automatically hidden if the
+terminal is too narrow to fit both columns
+
+<details>
+<summary>Command-line options</summary>
 
 | Option | Description |
 |---|---|
@@ -51,83 +144,74 @@ ferrisfetch [OPTIONS]
 | `--nerd-separator` | Use the Nerd Font separator instead of `:` |
 | `--pipe` | Plain `Key: value` output for scripts |
 | `--json` | JSON object output |
+| `-h, --help` | Show help |
+| `-V, --version` | Show the installed version |
+
+</details>
+
+## FAQ
+
+### Is this Fastfetch rewritten in Rust?
+
+No. ferrisfetch is an independent, smaller implementation inspired by Fastfetch,
+not a feature-complete port or a drop-in replacement. The ASCII logos are
+vendored from Fastfetch and retain their original MIT attribution
+
+### Why is a module missing from the output?
+
+Modules are only shown when their data is available. GPU detection tries
+`nvidia-smi`, then `lspci`, then `/sys/class/drm`. Monitor detection queries
+Hyprland or XRandR, so it may be unavailable in other sessions or on a headless
+machine
+
+### Why does a normal run take about 200 ms?
+
+The CPU module samples usage twice, about 200 ms apart. To avoid that sampling
+delay, omit the module:
 
 ```sh
-ferrisfetch --modules os,ram,cpu  # custom selection and order
-ferrisfetch --hide-modules gpu    # everything except the GPU
-ferrisfetch --pipe | grep '^RAM:' # scriptable
-ferrisfetch --json | jq .kernel   # structured output
-ferrisfetch --logo-list | grep nix # find a logo by name
+ferrisfetch --hide-modules cpu
 ```
 
-## Modules
+### Why are colours missing when I redirect output?
 
-`os`, `host`, `kernel`, `uptime`, `cpu`, `gpu`, `ram`, `disk`, `monitor`
+Colour is disabled when stdout is not a terminal, when `NO_COLOR` is set, or
+when `--no-color` is passed. This keeps redirected output free of escape codes
 
-A module whose data is unavailable is silently omitted rather than printed as
-`unknown`, so the output stays clean on bare servers and inside containers.
+### Can I use a custom image or an external logo file?
 
-GPU detection tries `nvidia-smi` first, then `lspci`, then `/sys/class/drm`.
-Disk shows used and available GiB, percentage used and filesystem type for the
-root volume (or the largest available disk). Each active monitor appears on its
-own line between GPU and RAM with its current resolution, diagonal in inches
-(when known) and refresh rate;
-it uses Hyprland or XRandR and is omitted on headless systems.
+Currently, `--logo` selects a built-in ASCII logo by name or alias. External
+logo files and image protocols are not supported
 
-## Logos
+### Where can I report a bug or suggest a feature?
 
-**531 logos, vendored verbatim from fastfetch** (`src/logo/ascii`, MIT — see
-`LICENSE-fastfetch`). The art is stored unmodified under `logos/`, laid out in
-the same `a/`, `b/`, `c/` … structure fastfetch uses.
-
-Fastfetch's per-logo metadata lives in C headers, not in the `.txt` files, so
-`tools/generate_logos.py` reads those headers and emits `src/logo/generated.rs`,
-pairing each logo with its display names and colour palette:
-
-```sh
-python3 tools/generate_logos.py          # regenerate the table
-python3 tools/generate_logos.py --check  # fail if the table is stale
-```
-
-Art uses `$1`, `$2`, … as palette indices. The parsing follows fastfetch's
-`ffLogoPrintChars` exactly, because the details matter:
-
-* `$` takes **one** following character, not a number — `$2888` is palette entry
-  2 followed by the literal text `888`;
-* `$$` is a literal `$`;
-* an out-of-range index leaves the `$` as text;
-* the active colour carries over to the next line.
-
-The key column takes its colour from the logo's first palette entry, matching
-fastfetch's default of `.colorKeys = colors[0]`.
-
-A logo is chosen from the `ID` field of `/etc/os-release` and dropped
-automatically when the terminal is too narrow to fit both columns.
-
-## Notes
-
-Colour is disabled automatically when stdout is not a TTY, when `NO_COLOR` is
-set, or with `--no-color`, so redirected output never contains escape sequences.
-
-The `cpu` module needs two samples ~200 ms apart to compute load, which accounts
-for essentially all of the runtime. Runs that do not request it finish instantly.
+Open an [issue](https://github.com/babichgh/ferrisfetch/issues), including your
+ferrisfetch version, distribution, command, and expected versus actual output
 
 ## Development
 
 ```sh
-cargo test                              # unit + integration tests
-cargo clippy --all-targets
-cargo fmt
+cargo test --locked
+cargo clippy --locked --all-targets -- -D warnings
+cargo fmt --check
+python3 tools/generate_logos.py --check
 ```
 
-One of the integration tests renders all 531 logos and checks each one resolves.
+One integration test renders all 531 built-in logos. Artwork lives in [`logos/`](logos),
+with metadata in `logos/meta.json`; regenerate the committed Rust table with
+`python3 tools/generate_logos.py` after changing those inputs
 
-### Releases
+Contributions are welcome. Target `dev` for development and fixes; `main` is
+reserved for releases
+
+<details>
+<summary>Release process and Trusted Publishing setup</summary>
+
 
 Develop on `dev`, bump the version in `Cargo.toml` and `Cargo.lock`, then merge
 into `main`. The release workflow validates the code, builds RPM/DEB packages,
 publishes to crates.io, and creates the matching GitHub release. Reruns skip
-crate versions already published to crates.io.
+crate versions already published to crates.io
 
 Publishing uses crates.io Trusted Publishing, not a stored API token. In the
 crate's settings on crates.io, add a GitHub trusted publisher with:
@@ -135,11 +219,20 @@ crate's settings on crates.io, add a GitHub trusted publisher with:
 - Owner: `babichgh`
 - Repository: `ferrisfetch`
 - Workflow filename: `release.yml`
-- Environment: leave empty (the workflow does not use a GitHub environment).
+- Environment: leave empty (the workflow does not use a GitHub environment)
 
-Configure this before pushing a new release to `main`.
+Configure this before pushing a new release to `main`
+
+</details>
+
+## Acknowledgements
+
+- [Fastfetch](https://github.com/fastfetch-cli/fastfetch) for the inspiration and
+  the vendored ASCII logo collection
+- [sysinfo](https://github.com/GuillaumeGomez/sysinfo) for system information
+  collection
 
 ## License
 
 MIT. Logo artwork is © fastfetch contributors, also MIT, bundled under
-`LICENSE-fastfetch`.
+`LICENSE-fastfetch`
