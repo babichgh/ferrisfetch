@@ -132,10 +132,69 @@ fn help_lists_every_module() {
     let (stdout, _, ok) = run(&["--help"]);
     assert!(ok);
     for m in [
-        "os", "host", "kernel", "uptime", "cpu", "gpu", "ram", "disk", "monitor",
+        "os",
+        "host",
+        "kernel",
+        "uptime",
+        "cpu",
+        "cpu-usage",
+        "gpu",
+        "ram",
+        "disk",
+        "monitor",
     ] {
         assert!(stdout.contains(m), "{m} missing from --help");
     }
+}
+
+#[test]
+fn cpu_info_and_usage_are_separate_modules() {
+    let (stdout, stderr, ok) = run(&["--pipe", "--modules", "cpu,cpu-usage"]);
+    assert!(ok, "stderr: {stderr}");
+    let lines: Vec<_> = stdout.lines().collect();
+    assert_eq!(lines.len(), 2, "got {stdout}");
+    assert!(lines[0].starts_with("CPU: "), "got {stdout}");
+    assert!(!lines[0].contains('%'), "got {stdout}");
+    let usage = lines[1].strip_prefix("CPU Usage: ").unwrap();
+    let percent: u32 = usage.strip_suffix('%').unwrap().parse().unwrap();
+    assert!(percent <= 100, "got {stdout}");
+}
+
+#[test]
+fn cpu_usage_json_uses_a_separate_key() {
+    let (stdout, stderr, ok) = run(&[
+        "--json",
+        "--modules",
+        "cpu-usage",
+        "--cpu-usage-interval",
+        "250",
+    ]);
+    assert!(ok, "stderr: {stderr}");
+    let json: serde_json::Value = serde_json::from_str(&stdout).unwrap();
+    assert_eq!(json.as_object().unwrap().len(), 1);
+    assert!(json["cpu_usage"].as_str().unwrap().ends_with('%'));
+}
+
+#[test]
+fn default_output_does_not_include_cpu_usage() {
+    let (stdout, stderr, ok) = run(&["--pipe"]);
+    assert!(ok, "stderr: {stderr}");
+    assert!(!stdout.contains("CPU Usage:"), "got {stdout}");
+}
+
+#[test]
+fn cpu_usage_can_be_hidden_from_defaults_without_changing_them() {
+    let (stdout, stderr, ok) = run(&["--pipe", "--hide-modules", "cpu-usage"]);
+    assert!(ok, "stderr: {stderr}");
+    assert!(stdout.lines().any(|line| line.starts_with("CPU: ")));
+    assert!(!stdout.contains("CPU Usage:"));
+}
+
+#[test]
+fn invalid_cpu_usage_interval_exits_with_error() {
+    let (_, stderr, ok) = run(&["--modules", "cpu-usage", "--cpu-usage-interval", "199"]);
+    assert!(!ok);
+    assert!(!stderr.is_empty());
 }
 
 #[test]

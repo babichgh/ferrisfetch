@@ -1,6 +1,7 @@
 //! Data collection: one entry per requested module (one per connected monitor).
 
 pub mod cpu;
+pub mod cpu_usage;
 pub mod disk;
 pub mod gpu;
 pub mod host;
@@ -23,6 +24,7 @@ pub enum Module {
     Kernel,
     Uptime,
     Cpu,
+    CpuUsage,
     Gpu,
     Monitor,
     Ram,
@@ -44,7 +46,7 @@ pub const DEFAULT_ORDER: &[Module] = &[
 
 /// Everything the modules read from, refreshed exactly once per run.
 ///
-/// Collection is selective: `gpu` shells out to `nvidia-smi` and `cpu` waits
+/// Collection is selective: `gpu` shells out to `nvidia-smi` and `cpu-usage` waits
 /// for a usage delta, so a run that does not request them skips that cost.
 pub struct Context {
     system: System,
@@ -56,16 +58,24 @@ pub struct Context {
 impl Context {
     /// Refreshes only what `modules` actually needs.
     pub fn collect(modules: &[Module]) -> Self {
-        let mut system = System::new();
-        let needs_cpu = modules.contains(&Module::Cpu);
+        Self::collect_with_cpu_interval(modules, cpu_usage::DEFAULT_INTERVAL)
+    }
 
-        system.refresh_memory();
-        system.refresh_cpu_usage();
+    /// The interval only applies when `cpu-usage` is selected.
+    pub fn collect_with_cpu_interval(modules: &[Module], interval: std::time::Duration) -> Self {
+        let mut system = System::new();
+
+        if modules.contains(&Module::Ram) {
+            system.refresh_memory();
+        }
+        if modules.contains(&Module::Cpu) {
+            system.refresh_cpu_frequency();
+        }
 
         // CPU usage is a delta between two samples, so it needs a second read.
-        let cpu_usage = if needs_cpu {
-            system.refresh_cpu_frequency();
-            std::thread::sleep(std::time::Duration::from_millis(200));
+        let cpu_usage = if modules.contains(&Module::CpuUsage) {
+            system.refresh_cpu_usage();
+            std::thread::sleep(interval.max(sysinfo::MINIMUM_CPU_UPDATE_INTERVAL));
             system.refresh_cpu_usage();
             Some(system.global_cpu_usage())
         } else {
@@ -98,6 +108,7 @@ impl Context {
             Module::Kernel => kernel::kernel(self)?,
             Module::Uptime => uptime::uptime(self)?,
             Module::Cpu => cpu::cpu(self)?,
+            Module::CpuUsage => cpu_usage::cpu_usage(self)?,
             Module::Gpu => gpu::gpu(self)?,
             Module::Ram => ram::ram(self)?,
             Module::Disk => disk::disk(self)?,
@@ -156,6 +167,7 @@ pub fn label(module: Module) -> &'static str {
         Module::Kernel => "Kernel",
         Module::Uptime => "Uptime",
         Module::Cpu => "CPU",
+        Module::CpuUsage => "CPU Usage",
         Module::Gpu => "GPU",
         Module::Ram => "RAM",
         Module::Disk => "Disk",
@@ -191,6 +203,7 @@ mod tests {
             Module::Kernel,
             Module::Uptime,
             Module::Cpu,
+            Module::CpuUsage,
             Module::Gpu,
             Module::Ram,
             Module::Disk,
@@ -225,6 +238,32 @@ mod tests {
         let ctx = Context::collect(&[]);
         assert!(ctx.entries(&[]).is_empty());
         assert!(ctx.cpu_usage.is_none());
+        assert!(ctx.system.cpus().is_empty());
+        assert_eq!(ctx.system.total_memory(), 0);
+        assert!(ctx.disks.is_empty());
+    }
+
+    #[test]
+    fn cpu_info_does_not_sample_usage_or_refresh_memory() {
+        let ctx = Context::collect(&[Module::Cpu]);
+        assert!(ctx.cpu_usage.is_none());
+        assert!(!ctx.system.cpus().is_empty());
+        assert_eq!(ctx.system.total_memory(), 0);
+    }
+
+    #[test]
+    fn ram_does_not_refresh_cpus() {
+        let ctx = Context::collect(&[Module::Ram]);
+        assert!(ctx.system.cpus().is_empty());
+        assert!(ctx.cpu_usage.is_none());
+    }
+
+    #[test]
+    fn cpu_usage_is_opt_in() {
+        assert!(!DEFAULT_ORDER.contains(&Module::CpuUsage));
+        let ctx = Context::collect(&[Module::CpuUsage]);
+        assert!(ctx.cpu_usage.is_some());
+        assert_eq!(ctx.system.total_memory(), 0);
     }
 
     #[test]
