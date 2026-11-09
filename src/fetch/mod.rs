@@ -1,5 +1,6 @@
-//! Data collection: one entry per requested module (one per connected monitor).
+//! Data collection: one entry per module, monitor, or battery.
 
+pub mod battery;
 pub(crate) mod command;
 pub mod cpu;
 pub mod cpu_usage;
@@ -10,6 +11,7 @@ pub mod kernel;
 pub mod monitor;
 pub mod os;
 pub mod ram;
+pub mod swap;
 pub mod uptime;
 pub mod util;
 
@@ -30,6 +32,8 @@ pub enum Module {
     Monitor,
     Ram,
     Disk,
+    Battery,
+    Swap,
 }
 
 /// Order used when the user does not pass `--modules`.
@@ -66,7 +70,7 @@ impl Context {
     pub fn collect_with_cpu_interval(modules: &[Module], interval: std::time::Duration) -> Self {
         let mut system = System::new();
 
-        if modules.contains(&Module::Ram) {
+        if modules.contains(&Module::Ram) || modules.contains(&Module::Swap) {
             system.refresh_memory();
         }
         if modules.contains(&Module::Cpu) {
@@ -113,6 +117,8 @@ impl Context {
             Module::Gpu => gpu::gpu(self)?,
             Module::Ram => ram::ram(self)?,
             Module::Disk => disk::disk(self)?,
+            Module::Swap => swap::swap(self)?,
+            Module::Battery => return battery::entries().into_iter().next(),
             Module::Monitor => monitor::monitors(self).into_iter().next()?,
         };
         let value = value.trim();
@@ -129,12 +135,10 @@ impl Context {
     pub fn entries(&self, modules: &[Module]) -> Vec<Entry> {
         modules
             .iter()
-            .flat_map(|m| {
-                if *m == Module::Monitor {
-                    monitor_entries(monitor::monitors(self))
-                } else {
-                    self.entry(*m).into_iter().collect()
-                }
+            .flat_map(|m| match m {
+                Module::Monitor => monitor_entries(monitor::monitors(self)),
+                Module::Battery => battery::entries(),
+                _ => self.entry(*m).into_iter().collect(),
             })
             .collect()
     }
@@ -173,6 +177,8 @@ pub fn label(module: Module) -> &'static str {
         Module::Ram => "RAM",
         Module::Disk => "Disk",
         Module::Monitor => "Monitor",
+        Module::Battery => "Battery",
+        Module::Swap => "Swap",
     }
 }
 
@@ -209,6 +215,8 @@ mod tests {
             Module::Ram,
             Module::Disk,
             Module::Monitor,
+            Module::Battery,
+            Module::Swap,
         ] {
             assert!(!label(m).is_empty());
         }
@@ -257,6 +265,27 @@ mod tests {
         let ctx = Context::collect(&[Module::Ram]);
         assert!(ctx.system.cpus().is_empty());
         assert!(ctx.cpu_usage.is_none());
+    }
+
+    #[test]
+    fn battery_and_swap_are_opt_in() {
+        assert!(!DEFAULT_ORDER.contains(&Module::Battery));
+        assert!(!DEFAULT_ORDER.contains(&Module::Swap));
+        let ctx = Context::collect(&[Module::Battery]);
+        assert_eq!(ctx.system.total_memory(), 0);
+        assert_eq!(ctx.system.total_swap(), 0);
+        assert!(ctx.system.cpus().is_empty());
+    }
+
+    #[test]
+    fn swap_refreshes_memory_without_cpus() {
+        for modules in [&[Module::Swap][..], &[Module::Ram, Module::Swap][..]] {
+            let ctx = Context::collect(modules);
+            assert!(ctx.system.total_memory() > 0);
+            assert!(ctx.system.cpus().is_empty());
+            assert!(ctx.cpu_usage.is_none());
+            assert!(ctx.disks.is_empty());
+        }
     }
 
     #[test]

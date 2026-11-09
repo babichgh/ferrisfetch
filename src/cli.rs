@@ -12,7 +12,7 @@ use clap::Parser;
     disable_help_subcommand = true
 )]
 pub struct Cli {
-    /// Modules to show, in the given order (default: standard set, without cpu-usage)
+    /// Modules to show, in the given order (default: without cpu-usage, battery, swap)
     #[arg(short, long, value_enum, value_delimiter = ',', num_args = 1..)]
     pub modules: Option<Vec<Module>>,
 
@@ -137,6 +137,21 @@ mod tests {
     fn duplicate_modules_are_removed() {
         let cli = parse(&["--modules", "ram,ram,cpu"]);
         assert_eq!(cli.selected_modules(), vec![Module::Ram, Module::Cpu]);
+    }
+
+    #[test]
+    fn battery_and_swap_selection_preserves_order_and_deduplicates() {
+        assert_eq!(
+            parse(&["--modules", "swap,battery,ram,swap,battery"]).selected_modules(),
+            vec![Module::Swap, Module::Battery, Module::Ram]
+        );
+        let defaults = parse(&[]).selected_modules();
+        assert!(!defaults.contains(&Module::Battery));
+        assert!(!defaults.contains(&Module::Swap));
+        assert_eq!(
+            parse(&["--hide-modules", "battery,swap"]).selected_modules(),
+            defaults
+        );
     }
 
     #[test]
