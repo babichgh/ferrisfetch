@@ -1,14 +1,14 @@
-Package: rfetch
+Package: ferrisfetch
 Version: @VERSION@
 Section: utils
 Priority: optional
 Architecture: @ARCH@
 Maintainer: babichgh <john@babich.pw>
 Depends: libc6, libgcc-s1
-Homepage: https://github.com/babichgh/Rfetch
+Homepage: https://github.com/babichgh/ferrisfetch
 Description: A fastfetch clone written in Rust
- Rfetch prints system information next to a logo for the running
+ ferrisfetch prints system information next to a logo for the running
  distribution. Logo artwork is vendored from fastfetch (MIT).
  .
  Logo art comes from fastfetch and is MIT licensed; its full text is
- installed at /usr/share/doc/rfetch/LICENSE-fastfetch.
+ installed at /usr/share/doc/ferrisfetch/LICENSE-fastfetch.

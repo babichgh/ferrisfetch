@@ -4,7 +4,7 @@ Guidance for coding agents working on this repository.
 
 ## What this is
 
-`rfetch` is a fastfetch clone in Rust. It prints system information in a column
+`ferrisfetch` is a fastfetch clone in Rust. It prints system information in a column
 next to an ASCII logo for the running distribution. It is a binary crate with no
 library target, so everything lives in `src/`.
 
@@ -104,7 +104,7 @@ conversion rewrite it.
 
 ## Packaging
 
-`packaging/rfetch.spec` builds the rpm; `packaging/build-deb.sh` builds the deb
+`packaging/ferrisfetch.spec` builds the rpm; `packaging/build-deb.sh` builds the deb
 from `packaging/debian/control.in`.
 
 - `%cargo_build` is deliberately not used: it shells out to `fg` and fails in a

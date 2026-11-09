@@ -1,11 +1,11 @@
 [package]
-name = "rfetch"
-version = "0.2.0"
+name = "ferrisfetch"
+version = "0.3.1"
 edition = "2024"
 description = "A fastfetch clone written in Rust"
 license = "MIT"
 readme = "README.md"
-repository = "https://github.com/example/rfetch"
+repository = "https://github.com/babichgh/ferrisfetch"
 keywords = ["fastfetch", "neofetch", "system", "info", "cli"]
 categories = ["command-line-utilities"]
 

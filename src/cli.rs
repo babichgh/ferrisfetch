@@ -6,7 +6,7 @@ use clap::Parser;
 
 #[derive(Parser, Debug)]
 #[command(
-    name = "rfetch",
+    name = "ferrisfetch",
     version,
     about = "A fastfetch clone written in Rust",
     disable_help_subcommand = true
@@ -110,7 +110,7 @@ mod tests {
     use clap::CommandFactory;
 
     fn parse(args: &[&str]) -> Cli {
-        Cli::try_parse_from(std::iter::once("rfetch").chain(args.iter().copied())).unwrap()
+        Cli::try_parse_from(std::iter::once("ferrisfetch").chain(args.iter().copied())).unwrap()
     }
 
     #[test]
@@ -165,7 +165,7 @@ mod tests {
 
     #[test]
     fn unknown_module_is_rejected() {
-        let res = Cli::try_parse_from(["rfetch", "--modules", "nonsense"]);
+        let res = Cli::try_parse_from(["ferrisfetch", "--modules", "nonsense"]);
         assert!(res.is_err());
     }
 

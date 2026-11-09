@@ -1,10 +1,10 @@
-Name:           rfetch
-Version:        %{rfetch_version}
+Name:           ferrisfetch
+Version:        %{ferrisfetch_version}
 Release:        1%{?dist}
 Summary:        A fastfetch clone written in Rust
 
 License:        MIT
-URL:            https://github.com/babichgh/Rfetch
+URL:            https://github.com/babichgh/ferrisfetch
 Source0:        %{name}-%{version}.tar.gz
 
 BuildRequires:  cargo >= 1.85
@@ -15,7 +15,7 @@ BuildRequires:  rust >= 1.85
 ExclusiveArch:  x86_64
 
 %description
-Rfetch prints system information next to a logo for the running
+ferrisfetch prints system information next to a logo for the running
 distribution. Logo artwork is vendored from fastfetch (MIT).
 
 %prep
@@ -32,7 +32,7 @@ cargo fetch --locked
 cargo build --release --locked
 
 %install
-install -Dm 0755 target/release/rfetch %{buildroot}%{_bindir}/rfetch
+install -Dm 0755 target/release/ferrisfetch %{buildroot}%{_bindir}/ferrisfetch
 
 # %license and %doc in %files install these from the build tree; manually
 # installing them here creates duplicate, potentially unpackaged files.
@@ -47,8 +47,8 @@ cargo test --release --locked --bins
 %license LICENSE
 %license LICENSE-fastfetch
 %doc README.md
-%{_bindir}/rfetch
+%{_bindir}/ferrisfetch
 
 %changelog
-* Tue Oct 13 2026 babichgh <john@babich.pw> - %{rfetch_version}-1
+* Tue Oct 13 2026 babichgh <john@babich.pw> - %{ferrisfetch_version}-1
 - Initial packaged release

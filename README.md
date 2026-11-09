@@ -1,4 +1,4 @@
-# Rfetch
+# ferrisfetch
 
 A fastfetch clone written in Rust.
 
@@ -22,14 +22,22 @@ cccccc;dNMWXXXWM0:;cccccccccccccc:,
 
 ## Install
 
+From [crates.io](https://crates.io/crates/ferrisfetch):
+
 ```sh
-cargo install --path .
+cargo install ferrisfetch --locked
+```
+
+Or build from a local checkout:
+
+```sh
+cargo install --path . --locked
 ```
 
 ## Usage
 
 ```
-rfetch [OPTIONS]
+ferrisfetch [OPTIONS]
 ```
 
 | Option | Description |
@@ -45,11 +53,11 @@ rfetch [OPTIONS]
 | `--json` | JSON object output |
 
 ```sh
-rfetch --modules os,ram,cpu     # custom selection and order
-rfetch --hide-modules gpu        # everything except the GPU
-rfetch --pipe | grep '^RAM:'     # scriptable
-rfetch --json | jq .kernel       # structured output
-rfetch --logo-list | grep nix    # find a logo by name
+ferrisfetch --modules os,ram,cpu  # custom selection and order
+ferrisfetch --hide-modules gpu    # everything except the GPU
+ferrisfetch --pipe | grep '^RAM:' # scriptable
+ferrisfetch --json | jq .kernel   # structured output
+ferrisfetch --logo-list | grep nix # find a logo by name
 ```
 
 ## Modules
@@ -113,6 +121,23 @@ cargo fmt
 ```
 
 One of the integration tests renders all 531 logos and checks each one resolves.
+
+### Releases
+
+Develop on `dev`, bump the version in `Cargo.toml` and `Cargo.lock`, then merge
+into `main`. The release workflow validates the code, builds RPM/DEB packages,
+publishes to crates.io, and creates the matching GitHub release. Reruns skip
+crate versions already published to crates.io.
+
+Publishing uses crates.io Trusted Publishing, not a stored API token. In the
+crate's settings on crates.io, add a GitHub trusted publisher with:
+
+- Owner: `babichgh`
+- Repository: `ferrisfetch`
+- Workflow filename: `release.yml`
+- Environment: leave empty (the workflow does not use a GitHub environment).
+
+Configure this before pushing a new release to `main`.
 
 ## License
 
