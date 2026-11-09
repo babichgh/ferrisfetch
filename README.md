@@ -245,10 +245,24 @@ vendored from Fastfetch and retain their original MIT attribution
 
 ### Why is a module missing from the output?
 
-Modules are only shown when their data is available. GPU detection tries
-`nvidia-smi`, then `lspci`, then `/sys/class/drm`. Monitor detection queries
-Hyprland or XRandR, so it may be unavailable in other sessions or on a headless
-machine
+Modules are only shown when their data is available. GPU detection enumerates
+Linux PCI display controllers in `/sys/bus/pci/devices`, adds names from
+`lspci -D`, and enriches matching devices with names and total memory from
+`nvidia-smi`. Devices are matched by normalized PCI address and sorted by
+domain, bus, device, and function; identical models at different addresses are
+kept, including Intel/AMD graphics alongside NVIDIA. All adapters remain in one
+`GPU` entry (for example, `2x Intel GPU + NVIDIA GPU`), and JSON's `gpu` value
+remains a string.
+
+Either command can supply devices when sysfs is unavailable, and sysfs provides
+vendor-level names if the tools fail or are missing. Unavailable memory is
+omitted. Detection runs only when `gpu` is selected. Non-PCI GPUs are not
+enumerated; command rows without a valid PCI address cannot be matched and are
+ignored. A restricted container or unavailable driver/tool may therefore expose
+only partial hardware information. No GPU temperature or utilization is queried.
+
+Monitor detection queries Hyprland or XRandR, so it may be unavailable in other
+sessions or on a headless machine
 
 ### Does a normal run wait for a CPU usage sample?
 
