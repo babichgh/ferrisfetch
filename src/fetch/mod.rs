@@ -3,6 +3,7 @@
 pub(crate) mod command;
 pub mod cpu;
 pub mod cpu_usage;
+mod de;
 pub mod disk;
 pub mod gpu;
 pub mod host;
@@ -10,8 +11,12 @@ pub mod kernel;
 pub mod monitor;
 pub mod os;
 pub mod ram;
+mod session;
+mod shell;
+mod terminal;
 pub mod uptime;
 pub mod util;
+mod wm;
 
 use crate::render::Entry;
 use clap::ValueEnum;
@@ -30,6 +35,10 @@ pub enum Module {
     Monitor,
     Ram,
     Disk,
+    Shell,
+    Terminal,
+    De,
+    Wm,
 }
 
 /// Order used when the user does not pass `--modules`.
@@ -54,6 +63,10 @@ pub struct Context {
     disks: Disks,
     os_release: Option<os::OsRelease>,
     cpu_usage: Option<f32>,
+    shell: Option<String>,
+    terminal: Option<String>,
+    de: Option<String>,
+    wm: Option<String>,
 }
 
 impl Context {
@@ -90,11 +103,36 @@ impl Context {
             Disks::new()
         };
 
+        let parents = if modules
+            .iter()
+            .any(|m| matches!(m, Module::Shell | Module::Terminal))
+        {
+            session::parents()
+        } else {
+            Vec::new()
+        };
+
         Self {
             system,
             disks,
             os_release: os::OsRelease::detect(),
             cpu_usage,
+            shell: modules
+                .contains(&Module::Shell)
+                .then(|| shell::detect(&parents, session::env("SHELL").as_deref()))
+                .flatten(),
+            terminal: modules
+                .contains(&Module::Terminal)
+                .then(|| terminal::detect(&parents, session::env))
+                .flatten(),
+            de: modules
+                .contains(&Module::De)
+                .then(|| de::detect(session::env))
+                .flatten(),
+            wm: modules
+                .contains(&Module::Wm)
+                .then(|| wm::detect(session::env))
+                .flatten(),
         }
     }
 
@@ -114,6 +152,10 @@ impl Context {
             Module::Ram => ram::ram(self)?,
             Module::Disk => disk::disk(self)?,
             Module::Monitor => monitor::monitors(self).into_iter().next()?,
+            Module::Shell => self.shell.clone()?,
+            Module::Terminal => self.terminal.clone()?,
+            Module::De => self.de.clone()?,
+            Module::Wm => self.wm.clone()?,
         };
         let value = value.trim();
         if value.is_empty() {
@@ -173,6 +215,10 @@ pub fn label(module: Module) -> &'static str {
         Module::Ram => "RAM",
         Module::Disk => "Disk",
         Module::Monitor => "Monitor",
+        Module::Shell => "Shell",
+        Module::Terminal => "Terminal",
+        Module::De => "DE",
+        Module::Wm => "WM",
     }
 }
 
@@ -209,6 +255,10 @@ mod tests {
             Module::Ram,
             Module::Disk,
             Module::Monitor,
+            Module::Shell,
+            Module::Terminal,
+            Module::De,
+            Module::Wm,
         ] {
             assert!(!label(m).is_empty());
         }
@@ -242,6 +292,10 @@ mod tests {
         assert!(ctx.system.cpus().is_empty());
         assert_eq!(ctx.system.total_memory(), 0);
         assert!(ctx.disks.is_empty());
+        assert!(ctx.shell.is_none());
+        assert!(ctx.terminal.is_none());
+        assert!(ctx.de.is_none());
+        assert!(ctx.wm.is_none());
     }
 
     #[test]
@@ -265,6 +319,13 @@ mod tests {
         let ctx = Context::collect(&[Module::CpuUsage]);
         assert!(ctx.cpu_usage.is_some());
         assert_eq!(ctx.system.total_memory(), 0);
+    }
+
+    #[test]
+    fn session_modules_are_opt_in() {
+        for module in [Module::Shell, Module::Terminal, Module::De, Module::Wm] {
+            assert!(!DEFAULT_ORDER.contains(&module));
+        }
     }
 
     #[test]
