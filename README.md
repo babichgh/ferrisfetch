@@ -89,7 +89,7 @@ ferrisfetch --help
 | `cpu` | Processor, core count, and frequency (no sampling delay) |
 | `cpu-usage` | Sampled processor usage (opt-in; waits 200 ms by default) |
 | `gpu` | Detected graphics hardware |
-| `monitor` | Active displays, resolution, refresh rate, and size when available |
+| `monitor` | Active displays via Hyprland, Sway, or XRandR; current resolution, refresh rate, and size when available |
 | `ram` | Used and total memory |
 | `disk` | Used and available space, usage percentage, and filesystem type |
 
@@ -181,8 +181,30 @@ vendored from Fastfetch and retain their original MIT attribution
 
 Modules are only shown when their data is available. GPU detection tries
 `nvidia-smi`, then `lspci`, then `/sys/class/drm`. Monitor detection queries
-Hyprland or XRandR, so it may be unavailable in other sessions or on a headless
-machine
+Hyprland (`hyprctl monitors -j`), Sway (`swaymsg -t get_outputs -r`), or XRandR
+(`xrandr --query`), only when `monitor` is selected. Sway reports active outputs
+with a valid `current_mode`: its pixel resolution is used, not the scaled logical
+`rect`, preferred modes, or EDID. Refresh is converted from millihertz to hertz;
+physical diagonal size is shown only when both millimetre dimensions are positive.
+
+Monitor backend selection is intentionally conservative:
+
+- Explicit `XDG_SESSION_TYPE=x11` uses only XRandR, and requires `DISPLAY`.
+- Otherwise, a Hyprland or Sway token (case-insensitive, colon-separated) in
+  `XDG_CURRENT_DESKTOP` or `XDG_SESSION_DESKTOP` selects that compositor. Conflicting
+  names omit monitors. This takes precedence over potentially inherited sockets.
+- Without a recognized name, exactly one nonempty `HYPRLAND_INSTANCE_SIGNATURE`
+  or `SWAYSOCK` selects that compositor. Both together are ambiguous: no query.
+- Without compositor hints, `WAYLAND_DISPLAY` or `XDG_SESSION_TYPE=wayland`
+  prevents XRandR use: XWayland geometry is not reliable physical-monitor data.
+  Only `DISPLAY` without Wayland hints permits the XRandR fallback. Empty hints
+  are ignored; no hints means no query.
+
+Only one backend is executed. Missing tools, command failures, malformed data,
+or no active modes omit the unavailable monitor entries, without trying another
+compositor or falling back from Wayland to XRandR. Incomplete environments can
+therefore omit monitors; stale compositor hints cannot always be distinguished
+from an active session. Other Wayland compositors are not supported.
 
 ### Does a normal run wait for a CPU usage sample?
 

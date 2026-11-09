@@ -35,6 +35,13 @@ impl Tools {
             .args(["--pipe", "--modules", module])
             .env("PATH", &self.0)
             .env("LC_ALL", "ferrisfetch-test-invalid-locale")
+            .env_remove("HYPRLAND_INSTANCE_SIGNATURE")
+            .env_remove("SWAYSOCK")
+            .env_remove("WAYLAND_DISPLAY")
+            .env_remove("XDG_CURRENT_DESKTOP")
+            .env_remove("XDG_SESSION_DESKTOP")
+            .env("XDG_SESSION_TYPE", "x11")
+            .env("DISPLAY", ":99")
             .output()
             .unwrap();
         assert!(output.status.success(), "{output:?}");
@@ -74,7 +81,7 @@ fn gpu_falls_back_after_failure_or_signal() {
 }
 
 #[test]
-fn monitor_falls_back_after_excessive_stderr() {
+fn x11_monitor_does_not_probe_hyprland() {
     let tools = Tools::new();
     tools.add("hyprctl", "while :; do printf 'too much output' >&2; done");
     tools.add(
