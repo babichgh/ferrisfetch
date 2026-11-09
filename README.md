@@ -164,6 +164,11 @@ Modules are only shown when their data is available. GPU detection tries
 Hyprland or XRandR, so it may be unavailable in other sessions or on a headless
 machine
 
+External detection commands have a two-second timeout and a 1 MiB limit on each
+of stdout and stderr. Missing, failing, or over-limit commands are skipped in
+favour of the next backend. Commands run with the `C` locale and stdin disconnected
+from the terminal. On Unix, cleanup also terminates their process group.
+
 ### Why does a normal run take about 200 ms?
 
 The CPU module samples usage twice, about 200 ms apart. To avoid that sampling

@@ -1,5 +1,6 @@
 //! Data collection: one entry per requested module (one per connected monitor).
 
+pub(crate) mod command;
 pub mod cpu;
 pub mod disk;
 pub mod gpu;

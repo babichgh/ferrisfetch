@@ -40,17 +40,14 @@ fn parse_nvidia_csv(stdout: &str) -> Option<String> {
 }
 
 fn via_nvidia_smi() -> Option<String> {
-    let out = std::process::Command::new("nvidia-smi")
-        .args([
+    let stdout = super::command::output(
+        "nvidia-smi",
+        &[
             "--query-gpu=name,memory.total",
             "--format=csv,noheader,nounits",
-        ])
-        .output()
-        .ok()?;
-    if !out.status.success() {
-        return None;
-    }
-    parse_nvidia_csv(&String::from_utf8_lossy(&out.stdout))
+        ],
+    )?;
+    parse_nvidia_csv(&stdout)
 }
 
 /// Extracts display controller names from `lspci` output.
@@ -82,11 +79,7 @@ fn parse_lspci(stdout: &str) -> Option<String> {
 }
 
 fn via_lspci() -> Option<String> {
-    let out = std::process::Command::new("lspci").output().ok()?;
-    if !out.status.success() {
-        return None;
-    }
-    parse_lspci(&String::from_utf8_lossy(&out.stdout))
+    parse_lspci(&super::command::output("lspci", &[])?)
 }
 
 /// Minimal fallback: map the DRM vendor id to a vendor name.
