@@ -164,11 +164,6 @@ Modules are only shown when their data is available. GPU detection tries
 Hyprland or XRandR, so it may be unavailable in other sessions or on a headless
 machine
 
-External detection commands have a two-second timeout and a 1 MiB limit on each
-of stdout and stderr. Missing, failing, or over-limit commands are skipped in
-favour of the next backend. Commands run with the `C` locale and stdin disconnected
-from the terminal. On Unix, cleanup also terminates their process group.
-
 ### Why does a normal run take about 200 ms?
 
 The CPU module samples usage twice, about 200 ms apart. To avoid that sampling
@@ -187,6 +182,13 @@ when `--no-color` is passed. This keeps redirected output free of escape codes
 
 Currently, `--logo` selects a built-in ASCII logo by name or alias. External
 logo files and image protocols are not supported
+
+### What happens if an external tool hangs?
+
+External detection commands have a two-second timeout and a 1 MiB limit on each
+of stdout and stderr. Missing, failing, or over-limit commands are skipped in
+favour of the next backend. Commands run with the `C` locale and stdin disconnected
+from the terminal. On Unix, cleanup also terminates their process group.
 
 ### Where can I report a bug or suggest a feature?
 
