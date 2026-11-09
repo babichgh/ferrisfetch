@@ -145,6 +145,10 @@ The default logo is selected from your distribution's `/etc/os-release` ID.
 Key colours follow the logo palette. The logo is automatically hidden if the
 terminal is too narrow to fit both columns
 
+Alignment uses Unicode terminal column widths, including wide CJK characters,
+combining marks, and emoji sequences. Ambiguous-width characters and Nerd Font
+icons are treated as one column; actual rendering can vary by terminal and font.
+
 <details>
 <summary>Command-line options</summary>
 

@@ -291,6 +291,17 @@ mod tests {
     }
 
     #[test]
+    fn width_measures_unicode_columns_with_or_without_colour() {
+        for color in [false, true] {
+            let logo = Logo::new("$1日本\ne\u{301}\n👩‍💻", &[(1, 2, 3)], color);
+            assert_eq!(logo.width(), 4);
+            // Palette changes must not split the visible emoji sequence.
+            let emoji = Logo::new("👩$1\u{200d}💻", &[(1, 2, 3)], color);
+            assert_eq!(emoji.width(), 2);
+        }
+    }
+
+    #[test]
     fn width_is_zero_for_blank_art() {
         assert_eq!(Logo::new("", &[(1, 2, 3)], true).width(), 0);
         assert_eq!(Logo::new("\n\n", &[(1, 2, 3)], true).width(), 0);
