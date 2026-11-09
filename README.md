@@ -12,7 +12,7 @@ to an ASCII logo, with selectable modules, automatic colours, and plain-text or
 JSON output for scripts
 
 - **531 built-in logos**, vendored from Fastfetch
-- **12 system information modules**, shown in the order you choose
+- **16 system information modules**, shown in the order you choose
 - **Terminal-aware layout** that hides the logo when space is limited
 - **Script-friendly output** with `--pipe`, `--json`, and automatic colour detection
 
@@ -94,11 +94,15 @@ ferrisfetch --help
 | `disk` | Used and available space, usage percentage, and filesystem type |
 | `battery` | Battery charge percentage and charging/discharging/full status when available (opt-in, Linux sysfs) |
 | `swap` | Used and total swap, with usage percentage (opt-in; omitted when total swap is zero) |
+| `shell` | Current shell name from parent processes; login shell fallback (opt-in) |
+| `terminal` | Terminal emulator or tmux/screen endpoint name (opt-in) |
+| `de` | Desktop environment name from XDG session variables (opt-in) |
+| `wm` | Hyprland, Sway, or KWin window manager name (opt-in) |
 
 Unavailable information is omitted rather than displayed as `unknown`
 
-The default output includes all modules except `cpu-usage`, `battery`, and `swap`. To include sampled
-usage, select it explicitly:
+The default output excludes `cpu-usage`, `shell`, `terminal`, `de`, and `wm`.
+To include sampled usage, select it explicitly:
 
 ```sh
 ferrisfetch --modules os,host,kernel,uptime,cpu,cpu-usage,gpu,monitor,ram,disk
@@ -131,6 +135,43 @@ No runtime estimate, health, serial number, or temperature is collected.
 selected. Values look like `1.0 GiB / 4.0 GiB (25%)`; the JSON key is `swap` with
 a string value. If total swap is zero, the entry is omitted (including from JSON),
 not shown as `unknown` or `0 / 0`.
+### Optional session modules
+
+```sh
+ferrisfetch --modules shell,terminal,de,wm
+ferrisfetch --json --modules shell,terminal,de,wm
+```
+
+These modules report names only, without version queries. JSON uses the same flat
+string values as existing modules, with keys `shell`, `terminal`, `de`, and `wm`;
+unavailable values are omitted.
+
+- `shell` walks at most 64 processes in the Linux parent chain, skipping wrappers
+  and unreadable executable names when the parent PID is still available. The
+  nearest recognized shell wins. If ancestry is inaccessible or no known shell
+  is found, `$SHELL` supplies a recognized **login shell**, which may differ from
+  the current shell. An inaccessible parent PID ends the walk; no full process
+  scan is performed.
+- `terminal` uses recognized parent executable names, `TERM_PROGRAM`, and
+  terminal-specific environment hints. `$TERM` is never an emulator name, and
+  generic VTE information alone is insufficient. tmux/screen are reported as
+  the terminal endpoint, not an unverifiable outer emulator. SSH suppresses
+  emulator hints; a remote multiplexer can still be reported. Unknown endpoints
+  are omitted. Inherited environment hints can be stale.
+- `de` reads `XDG_CURRENT_DESKTOP`, then `XDG_SESSION_DESKTOP`, normalizes known
+  aliases, and deduplicates colon-separated names (for example `ubuntu:GNOME`
+  becomes `GNOME`, `Budgie:GNOME` becomes `Budgie / GNOME`). Unknown names and
+  standalone WM names are not presented as desktop environments.
+- `wm` uses Hyprland/Sway session variables, without scanning processes.
+  KWin can also be confirmed using its D-Bus support information, only in a
+  graphical KDE session: one `qdbus6` query (`qdbus` for KDE 5), through the bounded
+  command helper. Missing tools, D-Bus access, or an unrecognized response omit
+  the value; KDE alone does not imply KWin. SSH suppresses WM detection.
+
+Only requested session modules are collected. The parent chain is shared when
+needed by `shell`/`terminal`; `de` and `wm` do not read processes. Detection does
+not scan all processes or run a sequence of compositor utilities. On platforms without Linux `/proc`,
+shell/terminal detection relies on the environment fallbacks.
 
 ### Output for scripts
 
@@ -253,6 +294,25 @@ with metadata in `logos/meta.json`; regenerate the committed Rust table with
 
 Contributions are welcome. Target `dev` for development and fixes; `main` is
 reserved for releases
+
+Local session-module release benchmark against base `d5c2ec2`: 10 warmups,
+300 subprocess runs per case in shuffled order, `--pipe`, fixed Hyprland/kitty
+environment hints, and stdout discarded. Median wall times (including startup):
+
+| Selection | Median | Added versus `os` in the same build |
+|---|---|---|
+| `os` (before / after) | 1.536 / 1.530 ms | — |
+| `os,shell` | 1.778 ms | 0.249 ms |
+| `os,terminal` | 1.787 ms | 0.258 ms |
+| `os,de` | 1.539 ms | 0.010 ms |
+| `os,wm` | 1.540 ms | 0.011 ms |
+| `os,shell,terminal,de,wm` | 1.804 ms | 0.274 ms |
+
+Default `--pipe` output with inherited environment (100 runs) measured
+32.790 ms before / 32.719 ms after. These are local observations, not timing
+guarantees; environment-only differences are near measurement noise. The KWin
+D-Bus backend was not benchmarked here and adds external-command latency (bounded
+by the shared two-second timeout).
 
 <details>
 <summary>Release process and Trusted Publishing setup</summary>

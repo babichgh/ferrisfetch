@@ -12,7 +12,7 @@ use clap::Parser;
     disable_help_subcommand = true
 )]
 pub struct Cli {
-    /// Modules to show, in the given order (default: without cpu-usage, battery, swap)
+    /// Modules to show, in the given order (default: standard set; optional modules excluded)
     #[arg(short, long, value_enum, value_delimiter = ',', num_args = 1..)]
     pub modules: Option<Vec<Module>>,
 

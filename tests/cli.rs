@@ -144,6 +144,10 @@ fn help_lists_every_module() {
         "monitor",
         "battery",
         "swap",
+        "shell",
+        "terminal",
+        "de",
+        "wm",
     ] {
         assert!(stdout.contains(m), "{m} missing from --help");
     }
