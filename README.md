@@ -113,7 +113,7 @@ ferrisfetch --pipe --modules cpu-usage --cpu-usage-interval 500
 The sampling interval is in milliseconds, with a minimum of 200. It has no effect
 when `cpu-usage` is not selected.
 
-**Unreleased output change (after 0.3.1):** `cpu` no longer includes the usage percentage.
+**Output change in 1.0.0:** `cpu` no longer includes the usage percentage.
 Use `cpu-usage` for that value; in JSON it is a separate `cpu_usage` key.
 
 Select batteries and swap explicitly, for example:

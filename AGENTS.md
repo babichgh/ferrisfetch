@@ -49,7 +49,7 @@ src/
 ```
 
 `fetch::Context::collect(&modules)` refreshes only what was requested. Reading
-`gpu` shells out to `nvidia-smi`; `monitor` queries Hyprland or XRandR only
+`gpu` queries `lspci` and `nvidia-smi`; `monitor` queries Hyprland, Sway, or XRandR only
 when selected; reading `cpu-usage` sleeps 200 ms by default waiting for a load
 delta. `cpu` only reads model/core/frequency information and does not wait. Do not
 make collection unconditional.
