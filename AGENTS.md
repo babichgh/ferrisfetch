@@ -80,8 +80,8 @@ rather than print `unknown`.
 
 - New command-based detectors must use bounded execution (timeout and output
   size), check exit status, and control locale when parsing localized text.
-  Prefer a shared helper over repeating process-management logic. Existing
-  direct `Command::output` calls still need migration to such a helper.
+  Use the shared `fetch::command::output` helper rather than repeating
+  process-management logic.
 - Pass arguments directly; do not use `sh -c` for ordinary detectors or execute
   commands obtained from configuration implicitly. Do not require root.
 - No network requests by default. Serial numbers, machine UUIDs, MAC addresses,
@@ -103,7 +103,11 @@ the counters. Check the vendored source rather than guessing:
 uses a `cfg(target_os)` literal instead.
 
 **ANSI escapes break width maths.** `render::width::visible_len` strips CSI and
-OSC sequences. Use it for any padding or column alignment; never `.len()`.
+OSC sequences and measures terminal columns with `unicode-width`. Use it for
+any padding or column alignment; never `.len()` or `.chars().count()`. Measure
+whole visible strings, not individual characters: combining marks and emoji
+sequences can span code points and ANSI changes. Ambiguous-width characters
+use non-CJK widths, including single-column Nerd Font icons.
 
 **Logo colour markers are not numbers.** In the vendored art, `$` takes exactly
 one following character, per fastfetch's `ffLogoPrintChars`. `$2888` is palette
