@@ -155,6 +155,13 @@ from `packaging/debian/control.in`.
 a change that breaks any single artwork is caught. That test is also the slow
 one; the rpm spec's `%check` runs `--bins` only to skip it.
 
+All external detector commands go through `fetch::command::output`: two-second
+timeout, 1 MiB limit per output stream, `C` locale, null stdin, and successful
+exit status required. On Unix, commands run in a private process group which is
+killed during cleanup; the direct child is always reaped. Do not bypass this
+helper with direct `Command::output` calls. `tests/commands.rs` uses fake tools
+to verify fallback behaviour without depending on hardware or the session.
+
 ## Known issues
 
 - `main` currently has no branch protection; `dev` merges are not enforced.

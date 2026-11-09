@@ -55,14 +55,7 @@ fn parse_hyprland(raw: &str) -> Option<Vec<Monitor>> {
 }
 
 fn hyprland() -> Option<Vec<Monitor>> {
-    let output = std::process::Command::new("hyprctl")
-        .args(["monitors", "-j"])
-        .output()
-        .ok()?;
-    output
-        .status
-        .success()
-        .then(|| parse_hyprland(&String::from_utf8_lossy(&output.stdout)))?
+    parse_hyprland(&super::command::output("hyprctl", &["monitors", "-j"])?)
 }
 
 /// XRandR marks the current refresh rate with `*`; the connector line gives
@@ -125,14 +118,10 @@ fn parse_xrandr(raw: &str) -> Vec<Monitor> {
 }
 
 fn xrandr() -> Option<Vec<Monitor>> {
-    let output = std::process::Command::new("xrandr")
-        .arg("--query")
-        .output()
-        .ok()?;
-    output
-        .status
-        .success()
-        .then(|| parse_xrandr(&String::from_utf8_lossy(&output.stdout)))
+    Some(parse_xrandr(&super::command::output(
+        "xrandr",
+        &["--query"],
+    )?))
 }
 
 pub fn monitors(_ctx: &Context) -> Vec<String> {
