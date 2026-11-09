@@ -101,7 +101,8 @@ ferrisfetch --help
 
 Unavailable information is omitted rather than displayed as `unknown`
 
-The default output excludes `cpu-usage`, `shell`, `terminal`, `de`, and `wm`.
+The default output excludes `cpu-usage`, `shell`, `terminal`, `de`, `wm`,
+`battery`, and `swap`.
 To include sampled usage, select it explicitly:
 
 ```sh
@@ -135,6 +136,7 @@ No runtime estimate, health, serial number, or temperature is collected.
 selected. Values look like `1.0 GiB / 4.0 GiB (25%)`; the JSON key is `swap` with
 a string value. If total swap is zero, the entry is omitted (including from JSON),
 not shown as `unknown` or `0 / 0`.
+
 ### Optional session modules
 
 ```sh
