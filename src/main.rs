@@ -43,7 +43,12 @@ fn main() {
     let colors = cli.colors_enabled();
 
     let modules = cli.selected_modules();
-    let ctx = Context::collect(&modules);
+    let ctx = match cli.cpu_usage_interval {
+        Some(ms) => {
+            Context::collect_with_cpu_interval(&modules, std::time::Duration::from_millis(ms))
+        }
+        None => Context::collect(&modules),
+    };
     let entries = ctx.entries(&modules);
 
     // Scripted output: no logo, no colour, one field per line.

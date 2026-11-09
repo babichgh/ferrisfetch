@@ -50,11 +50,44 @@ src/
 
 `fetch::Context::collect(&modules)` refreshes only what was requested. Reading
 `gpu` shells out to `nvidia-smi`; `monitor` queries Hyprland or XRandR only
-when selected; reading `cpu` sleeps 200 ms waiting for a load delta. Do not
+when selected; reading `cpu-usage` sleeps 200 ms by default waiting for a load
+delta. `cpu` only reads model/core/frequency information and does not wait. Do not
 make collection unconditional.
 
 Modules return `Option`. Data that is unavailable makes the line disappear
 rather than print `unknown`.
+
+## Adding or changing modules
+
+- Add the detector under `src/fetch/`, register its `Module` variant and label,
+  and connect it to selective collection and output. Decide explicitly whether
+  it belongs in `DEFAULT_ORDER`; expensive or privacy-sensitive modules should
+  be opt-in. `cpu-usage`, unlike `cpu`, is not in the default set.
+- Refresh only the resources the selected modules need. Keep sampling waits
+  exclusive to modules that require a delta; respect sysinfo's
+  `MINIMUM_CPU_UPDATE_INTERVAL`.
+- Keep parsing/formatting separate from filesystem reads and process execution.
+  Test parsers with fixtures for missing, malformed, and multiple-device data;
+  do not rely only on the developer's hardware or session.
+- Add CLI tests for selection, ordering, and relevant `--pipe`/`--json` output,
+  and update the module table and options in `README.md`.
+- Treat CLI names, JSON keys/types, and default output as user-facing contracts.
+  Document intentional changes; do not silently replace the JSON schema.
+- Measure performance using release builds before and after changes to
+  collection. Avoid tight wall-clock assertions in tests: CI load varies.
+
+## External commands and privacy
+
+- New command-based detectors must use bounded execution (timeout and output
+  size), check exit status, and control locale when parsing localized text.
+  Prefer a shared helper over repeating process-management logic. Existing
+  direct `Command::output` calls still need migration to such a helper.
+- Pass arguments directly; do not use `sh -c` for ordinary detectors or execute
+  commands obtained from configuration implicitly. Do not require root.
+- No network requests by default. Serial numbers, machine UUIDs, MAC addresses,
+  and similar identifiers must not be added to normal output implicitly.
+- Linux is the primary target. Missing tools, unsupported sessions, and denied
+  access should omit unavailable data rather than panic or invent values.
 
 ## Things that will bite you
 

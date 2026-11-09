@@ -1,4 +1,4 @@
-//! CPU model, core count, frequency and load.
+//! CPU model, core count and frequency (no usage sampling).
 
 use crate::fetch::Context;
 
@@ -17,7 +17,7 @@ pub fn clean_brand(raw: &str) -> String {
     trimmed.to_string()
 }
 
-/// e.g. `AMD Ryzen 7 5800X (16) @ 4.90 GHz: 12%`.
+/// e.g. `AMD Ryzen 7 5800X (8) @ 4.90 GHz`.
 pub fn cpu(ctx: &Context) -> Option<String> {
     let system = crate::fetch::system(ctx);
     let cpus = system.cpus();
@@ -39,13 +39,6 @@ pub fn cpu(ctx: &Context) -> Option<String> {
     if freq_mhz > 0 {
         // Fixed two decimals: trimming would turn "2.50" into a bare "2.5".
         parts.push(format!("@ {:.2} GHz", freq_mhz as f64 / 1000.0));
-    }
-
-    if let Some(usage) = crate::fetch::cpu_usage(ctx)
-        && usage.is_finite()
-        && usage >= 0.0
-    {
-        parts.push(format!(": {:.0}%", usage.clamp(0.0, 100.0)));
     }
 
     Some(parts.join(" "))
@@ -84,14 +77,9 @@ mod tests {
     }
 
     #[test]
-    fn usage_is_clamped_to_range() {
+    fn cpu_info_does_not_include_usage() {
         let ctx = Context::collect(&[Module::Cpu]);
         let v = cpu(&ctx).unwrap();
-        if let Some(pos) = v.rfind(": ") {
-            let pct = &v[pos + 2..];
-            if let Ok(n) = pct.trim_end_matches('%').parse::<f64>() {
-                assert!((0.0..=100.0).contains(&n), "out of range: {v}");
-            }
-        }
+        assert!(!v.contains('%'), "unexpected usage: {v}");
     }
 }

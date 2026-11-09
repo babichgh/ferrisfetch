@@ -12,13 +12,17 @@ use clap::Parser;
     disable_help_subcommand = true
 )]
 pub struct Cli {
-    /// Modules to show, in the given order (default: all)
+    /// Modules to show, in the given order (default: standard set, without cpu-usage)
     #[arg(short, long, value_enum, value_delimiter = ',', num_args = 1..)]
     pub modules: Option<Vec<Module>>,
 
     /// Modules to hide from the default set
     #[arg(short = 'u', long, value_enum, value_delimiter = ',', num_args = 1..)]
     pub hide_modules: Option<Vec<Module>>,
+
+    /// CPU usage sampling interval in milliseconds (minimum/default: 200); only for cpu-usage
+    #[arg(long, value_name = "MS", value_parser = clap::value_parser!(u64).range(200..))]
+    pub cpu_usage_interval: Option<u64>,
 
     /// Hide the logo and print a single column
     #[arg(long)]
@@ -133,6 +137,31 @@ mod tests {
     fn duplicate_modules_are_removed() {
         let cli = parse(&["--modules", "ram,ram,cpu"]);
         assert_eq!(cli.selected_modules(), vec![Module::Ram, Module::Cpu]);
+    }
+
+    #[test]
+    fn cpu_usage_is_selectable_but_not_default() {
+        assert!(!parse(&[]).selected_modules().contains(&Module::CpuUsage));
+        assert_eq!(
+            parse(&["--modules", "cpu,cpu-usage"]).selected_modules(),
+            vec![Module::Cpu, Module::CpuUsage]
+        );
+    }
+
+    #[test]
+    fn cpu_usage_interval_is_validated() {
+        assert_eq!(parse(&[]).cpu_usage_interval, None);
+        assert_eq!(
+            parse(&["--cpu-usage-interval", "500"]).cpu_usage_interval,
+            Some(500)
+        );
+        assert_eq!(
+            parse(&["--cpu-usage-interval", "200"]).cpu_usage_interval,
+            Some(200)
+        );
+        for value in ["0", "199", "-1", "abc"] {
+            assert!(Cli::try_parse_from(["ferrisfetch", "--cpu-usage-interval", value]).is_err());
+        }
     }
 
     #[test]

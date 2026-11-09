@@ -12,7 +12,7 @@ to an ASCII logo, with selectable modules, automatic colours, and plain-text or
 JSON output for scripts
 
 - **531 built-in logos**, vendored from Fastfetch
-- **9 system information modules**, shown in the order you choose
+- **10 system information modules**, shown in the order you choose
 - **Terminal-aware layout** that hides the logo when space is limited
 - **Script-friendly output** with `--pipe`, `--json`, and automatic colour detection
 
@@ -86,13 +86,28 @@ ferrisfetch --help
 | `host` | User and hostname |
 | `kernel` | Kernel name and version |
 | `uptime` | Time since boot |
-| `cpu` | Processor and sampled usage |
+| `cpu` | Processor, core count, and frequency (no sampling delay) |
+| `cpu-usage` | Sampled processor usage (opt-in; waits 200 ms by default) |
 | `gpu` | Detected graphics hardware |
 | `monitor` | Active displays, resolution, refresh rate, and size when available |
 | `ram` | Used and total memory |
 | `disk` | Used and available space, usage percentage, and filesystem type |
 
 Unavailable information is omitted rather than displayed as `unknown`
+
+The default output includes all modules except `cpu-usage`. To include sampled
+usage, select it explicitly:
+
+```sh
+ferrisfetch --modules os,host,kernel,uptime,cpu,cpu-usage,gpu,monitor,ram,disk
+ferrisfetch --pipe --modules cpu-usage --cpu-usage-interval 500
+```
+
+The sampling interval is in milliseconds, with a minimum of 200. It has no effect
+when `cpu-usage` is not selected.
+
+**Unreleased output change (after 0.3.1):** `cpu` no longer includes the usage percentage.
+Use `cpu-usage` for that value; in JSON it is a separate `cpu_usage` key.
 
 ### Output for scripts
 
@@ -137,6 +152,7 @@ terminal is too narrow to fit both columns
 |---|---|
 | `-m, --modules <MODULES>` | Show only these modules, in the given order |
 | `-u, --hide-modules <MODULES>` | Hide these from the default set |
+| `--cpu-usage-interval <MS>` | Sampling interval for `cpu-usage` (minimum/default: 200 ms) |
 | `--logo-off` | Drop the logo, print a single column |
 | `--logo <LOGO>` | Force a logo by name or alias, or `off` |
 | `--logo-list` | List all 531 available logos |
@@ -164,13 +180,13 @@ Modules are only shown when their data is available. GPU detection tries
 Hyprland or XRandR, so it may be unavailable in other sessions or on a headless
 machine
 
-### Why does a normal run take about 200 ms?
+### Does a normal run wait for a CPU usage sample?
 
-The CPU module samples usage twice, about 200 ms apart. To avoid that sampling
-delay, omit the module:
+No. The `cpu` module reads processor information without waiting. Only the
+optional `cpu-usage` module samples usage twice, 200 ms apart by default:
 
 ```sh
-ferrisfetch --hide-modules cpu
+ferrisfetch --modules cpu,cpu-usage
 ```
 
 ### Why are colours missing when I redirect output?
