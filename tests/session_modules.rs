@@ -90,7 +90,7 @@ fn every_session_module_is_individually_selectable() {
 }
 
 #[test]
-fn default_selection_excludes_session_modules_and_hide_accepts_them() {
+fn default_selection_includes_session_modules_and_hide_removes_them() {
     for hidden in ["gpu,monitor", "shell,terminal,de,wm,gpu,monitor"] {
         let out = Command::new(env!("CARGO_BIN_EXE_ferrisfetch"))
             .args(["--pipe", "--hide-modules", hidden])
@@ -102,8 +102,8 @@ fn default_selection_excludes_session_modules_and_hide_accepts_them() {
             .unwrap();
         assert!(out.status.success());
         let text = String::from_utf8(out.stdout).unwrap();
-        for label in ["Shell:", "Terminal:", "DE:", "WM:"] {
-            assert!(!text.contains(label));
+        for label in ["Terminal:", "DE:", "WM:"] {
+            assert_eq!(text.contains(label), hidden == "gpu,monitor", "{text}");
         }
     }
 }

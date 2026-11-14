@@ -56,6 +56,12 @@ pub const DEFAULT_ORDER: &[Module] = &[
     Module::Monitor,
     Module::Ram,
     Module::Disk,
+    Module::Battery,
+    Module::Swap,
+    Module::Shell,
+    Module::Terminal,
+    Module::De,
+    Module::Wm,
 ];
 
 /// Everything the modules read from, refreshed exactly once per run.
@@ -322,9 +328,7 @@ mod tests {
     }
 
     #[test]
-    fn battery_and_swap_are_opt_in() {
-        assert!(!DEFAULT_ORDER.contains(&Module::Battery));
-        assert!(!DEFAULT_ORDER.contains(&Module::Swap));
+    fn battery_does_not_refresh_memory_or_cpus() {
         let ctx = Context::collect(&[Module::Battery]);
         assert_eq!(ctx.system.total_memory(), 0);
         assert_eq!(ctx.system.total_swap(), 0);
@@ -351,10 +355,13 @@ mod tests {
     }
 
     #[test]
-    fn session_modules_are_opt_in() {
-        for module in [Module::Shell, Module::Terminal, Module::De, Module::Wm] {
-            assert!(!DEFAULT_ORDER.contains(&module));
-        }
+    fn default_order_includes_every_module_except_cpu_usage() {
+        let expected: Vec<_> = Module::value_variants()
+            .iter()
+            .copied()
+            .filter(|module| *module != Module::CpuUsage)
+            .collect();
+        assert_eq!(DEFAULT_ORDER, expected);
     }
 
     #[test]

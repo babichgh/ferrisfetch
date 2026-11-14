@@ -43,6 +43,7 @@ merge `dev` into `main`, then push `main` to publish the new release.
 src/
 ├── main.rs      orchestration; --pipe and --json bypass the layout
 ├── cli.rs       clap args
+├── config.rs    JSON config discovery, generation, validation, and CLI precedence
 ├── fetch/       data collection, one module per fact
 ├── logo/        531 vendored artworks + marker parsing
 └── render/      two-column layout, colours, ANSI-aware width
@@ -56,6 +57,12 @@ make collection unconditional.
 
 Modules return `Option`. Data that is unavailable makes the line disappear
 rather than print `unknown`.
+
+All modules except `cpu-usage` are selected by default. `config.json` can
+override selection/order, hide modules, and set presentation options. Use
+`--no-config` in tests unrelated to config (or clear HOME/XDG_CONFIG_HOME) so
+the developer's own settings do not affect fixtures. Normal runs never create
+config files; `--gen-config` must not overwrite existing files.
 
 ## Adding or changing modules
 
