@@ -13,6 +13,7 @@ JSON output for scripts
 
 - **531 built-in logos**, vendored from Fastfetch
 - **16 system information modules**, shown in the order you choose
+- **Persistent JSON configuration** with safe generation via `--gen-config`
 - **Terminal-aware layout** that hides the logo when space is limited
 - **Script-friendly output** with `--pipe`, `--json`, and automatic colour detection
 
@@ -92,17 +93,20 @@ ferrisfetch --help
 | `monitor` | Active displays via Hyprland, Sway, or XRandR; current resolution, refresh rate, and size when available |
 | `ram` | Used and total memory |
 | `disk` | Used and available space, usage percentage, and filesystem type |
-| `battery` | Battery charge percentage and charging/discharging/full status when available (opt-in, Linux sysfs) |
-| `swap` | Used and total swap, with usage percentage (opt-in; omitted when total swap is zero) |
-| `shell` | Current shell name from parent processes; login shell fallback (opt-in) |
-| `terminal` | Terminal emulator or tmux/screen endpoint name (opt-in) |
-| `de` | Desktop environment name from XDG session variables (opt-in) |
-| `wm` | Hyprland, Sway, or KWin window manager name (opt-in) |
+| `battery` | Battery charge percentage and charging/discharging/full status when available (Linux sysfs) |
+| `swap` | Used and total swap, with usage percentage (omitted when total swap is zero) |
+| `shell` | Current shell name from parent processes; login shell fallback |
+| `terminal` | Terminal emulator or tmux/screen endpoint name |
+| `de` | Desktop environment name from XDG session variables |
+| `wm` | Hyprland, Sway, or KWin window manager name |
 
 Unavailable information is omitted rather than displayed as `unknown`
 
-The default output excludes `cpu-usage`, `shell`, `terminal`, `de`, `wm`,
-`battery`, and `swap`.
+The default output includes every module except `cpu-usage`.
+**Unreleased output change:** battery, swap, shell, terminal, DE, and WM now appear
+by default when available, including in `--pipe` and `--json` output. Existing
+JSON keys and string value types are unchanged. Hide unwanted modules with
+`--hide-modules` or select an explicit list for stable scripted output.
 To include sampled usage, select it explicitly:
 
 ```sh
@@ -116,7 +120,7 @@ when `cpu-usage` is not selected.
 **Output change in 1.0.0:** `cpu` no longer includes the usage percentage.
 Use `cpu-usage` for that value; in JSON it is a separate `cpu_usage` key.
 
-Select batteries and swap explicitly, for example:
+To show only batteries and swap, for example:
 
 ```sh
 ferrisfetch --pipe --modules battery,ram,swap
@@ -137,7 +141,7 @@ selected. Values look like `1.0 GiB / 4.0 GiB (25%)`; the JSON key is `swap` wit
 a string value. If total swap is zero, the entry is omitted (including from JSON),
 not shown as `unknown` or `0 / 0`.
 
-### Optional session modules
+### Session modules
 
 ```sh
 ferrisfetch --modules shell,terminal,de,wm
@@ -189,8 +193,52 @@ Neither output mode includes the logo or ANSI colour codes
 
 ## Customization
 
-ferrisfetch is configured through command-line options; it does not currently
-read Fastfetch's JSONC configuration files
+Generate an editable configuration:
+
+```sh
+ferrisfetch --gen-config
+```
+
+The file is read automatically from `$XDG_CONFIG_HOME/ferrisfetch/config.json`,
+or `~/.config/ferrisfetch/config.json` when `XDG_CONFIG_HOME` is unset, empty,
+or relative. Normal runs never create files; `--gen-config` creates parent
+directories but refuses to overwrite an existing file.
+
+Example configuration (JSON, not Fastfetch's JSONC format):
+
+```json
+{
+  "modules": ["os", "host", "kernel", "cpu", "gpu", "ram", "swap", "battery", "shell", "terminal", "de", "wm"],
+  "hide-modules": ["host"],
+  "logo": "arch",
+  "no-color": false,
+  "nerd-separator": false,
+  "cpu-usage-interval": 200
+}
+```
+
+All fields are optional. `modules` selects the order (duplicates are removed);
+an empty array shows no modules. Without it, the built-in defaults apply.
+`hide-modules` filters that list. `logo` is a built-in name/alias or `"off"`;
+omit it or use `null` for automatic distribution detection. The sampling interval must be
+at least 200 ms and only affects `cpu-usage`.
+
+CLI `--modules` replaces the configured selection and ignores hidden modules,
+as before. CLI `--hide-modules` replaces the configured hide list and filters
+the configured/default selection. Explicit `--logo` and `--cpu-usage-interval`
+override their configured values; `--logo-off`, `--no-color`, and
+`--nerd-separator` enable their respective options regardless of the file.
+`NO_COLOR` and non-terminal output still disable colors.
+
+```sh
+ferrisfetch --config ./custom.json             # Read another file
+ferrisfetch --gen-config --config ./custom.json # Generate another file
+ferrisfetch --no-config                        # Use built-in settings only
+```
+
+A missing default file is fine; an explicitly requested missing file, invalid
+JSON, unknown settings/modules, or invalid setting types produce an error.
+`--help`, `--version`, and `--logo-list` do not load the configuration.
 
 ```sh
 # Find a built-in logo by name
@@ -221,7 +269,10 @@ icons are treated as one column; actual rendering can vary by terminal and font.
 | Option | Description |
 |---|---|
 | `-m, --modules <MODULES>` | Show only these modules, in the given order |
-| `-u, --hide-modules <MODULES>` | Hide these from the default set |
+| `-u, --hide-modules <MODULES>` | Hide these from the configured/default set |
+| `--gen-config` | Create a JSON config without overwriting an existing file |
+| `--config <PATH>` | Read or generate a config at this path |
+| `--no-config` | Ignore config files and use built-in settings |
 | `--cpu-usage-interval <MS>` | Sampling interval for `cpu-usage` (minimum/default: 200 ms) |
 | `--logo-off` | Drop the logo, print a single column |
 | `--logo <LOGO>` | Force a logo by name or alias, or `off` |

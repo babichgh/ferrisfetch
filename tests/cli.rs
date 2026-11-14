@@ -5,6 +5,7 @@ use std::process::Command;
 fn run(args: &[&str]) -> (String, String, bool) {
     let out = Command::new(env!("CARGO_BIN_EXE_ferrisfetch"))
         .args(args)
+        .arg("--no-config")
         .output()
         .expect("ferrisfetch binary should be runnable");
     (
@@ -255,11 +256,7 @@ fn battery_and_swap_json_preserves_string_object_contract() {
 }
 
 #[test]
-fn battery_and_swap_are_not_in_default_output() {
-    let (stdout, stderr, ok) = run(&["--pipe"]);
-    assert!(ok, "stderr: {stderr}");
-    assert!(!stdout.contains("Battery "));
-    assert!(!stdout.contains("Swap:"));
+fn battery_and_swap_can_be_hidden_from_default_output() {
     let (stdout, stderr, ok) = run(&["--json", "--hide-modules", "battery,swap"]);
     assert!(ok, "stderr: {stderr}");
     let json: serde_json::Value = serde_json::from_str(&stdout).unwrap();

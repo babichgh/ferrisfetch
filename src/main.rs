@@ -1,4 +1,5 @@
 mod cli;
+mod config;
 mod fetch;
 mod logo;
 mod render;
@@ -26,7 +27,18 @@ fn json_escape(s: &str) -> String {
 }
 
 fn main() {
-    let cli = Cli::parse();
+    let mut cli = Cli::parse();
+
+    if cli.gen_config {
+        match config::generate(cli.config.as_deref()) {
+            Ok(path) => println!("Created config: {}", path.display()),
+            Err(error) => {
+                eprintln!("ferrisfetch: {error}");
+                std::process::exit(1);
+            }
+        }
+        return;
+    }
 
     if cli.logo_list {
         for l in logo::LOGOS {
@@ -38,6 +50,11 @@ fn main() {
             }
         }
         return;
+    }
+
+    if let Err(error) = config::load(&mut cli) {
+        eprintln!("ferrisfetch: {error}");
+        std::process::exit(1);
     }
 
     let colors = cli.colors_enabled();
