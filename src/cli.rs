@@ -12,11 +12,23 @@ use clap::Parser;
     disable_help_subcommand = true
 )]
 pub struct Cli {
-    /// Modules to show, in the given order (default: standard set; optional modules excluded)
+    /// Read settings from this JSON file instead of the default config
+    #[arg(long, value_name = "PATH", conflicts_with = "no_config")]
+    pub config: Option<std::path::PathBuf>,
+
+    /// Ignore the configuration file
+    #[arg(long)]
+    pub no_config: bool,
+
+    /// Create the default JSON config (or use --config PATH); never overwrites
+    #[arg(long, conflicts_with_all = ["no_config", "logo_list"])]
+    pub gen_config: bool,
+
+    /// Modules to show, in the given order (default: configured set, or all except cpu-usage)
     #[arg(short, long, value_enum, value_delimiter = ',', num_args = 1..)]
     pub modules: Option<Vec<Module>>,
 
-    /// Modules to hide from the default set
+    /// Modules to hide from the configured or default set
     #[arg(short = 'u', long, value_enum, value_delimiter = ',', num_args = 1..)]
     pub hide_modules: Option<Vec<Module>>,
 
@@ -54,7 +66,7 @@ pub struct Cli {
 }
 
 impl Cli {
-    /// Resolves the effective module list from defaults plus `--hide-modules`.
+    /// Resolves module order after config settings have been applied.
     pub fn selected_modules(&self) -> Vec<Module> {
         if let Some(m) = &self.modules {
             return dedup(m);
@@ -146,11 +158,14 @@ mod tests {
             vec![Module::Swap, Module::Battery, Module::Ram]
         );
         let defaults = parse(&[]).selected_modules();
-        assert!(!defaults.contains(&Module::Battery));
-        assert!(!defaults.contains(&Module::Swap));
+        assert!(defaults.contains(&Module::Battery));
+        assert!(defaults.contains(&Module::Swap));
         assert_eq!(
             parse(&["--hide-modules", "battery,swap"]).selected_modules(),
             defaults
+                .into_iter()
+                .filter(|m| !matches!(m, Module::Battery | Module::Swap))
+                .collect::<Vec<_>>()
         );
     }
 

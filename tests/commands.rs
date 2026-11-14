@@ -37,6 +37,7 @@ impl Tools {
     fn run_args(&self, args: &[&str]) -> String {
         let output = Command::new(env!("CARGO_BIN_EXE_ferrisfetch"))
             .args(args)
+            .arg("--no-config")
             .env("PATH", &self.0)
             .env("LC_ALL", "ferrisfetch-test-invalid-locale")
             .env_remove("HYPRLAND_INSTANCE_SIGNATURE")
