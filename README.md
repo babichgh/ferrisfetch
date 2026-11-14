@@ -103,7 +103,7 @@ ferrisfetch --help
 Unavailable information is omitted rather than displayed as `unknown`
 
 The default output includes every module except `cpu-usage`.
-**Unreleased output change:** battery, swap, shell, terminal, DE, and WM now appear
+**Output change in 1.1.0:** battery, swap, shell, terminal, DE, and WM now appear
 by default when available, including in `--pipe` and `--json` output. Existing
 JSON keys and string value types are unchanged. Hide unwanted modules with
 `--hide-modules` or select an explicit list for stable scripted output.
