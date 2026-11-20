@@ -40,9 +40,12 @@ pub struct Cli {
     #[arg(long)]
     pub logo_off: bool,
 
-    /// Force a specific logo (fedora, arch, debian, ...) or "off"
+    /// Built-in logo name/alias, PNG/JPEG path (relative to cwd), or "off"
     #[arg(long)]
     pub logo: Option<String>,
+
+    #[arg(skip)]
+    pub logo_image: Option<crate::logo::image::Source>,
 
     /// Disable ANSI colour output
     #[arg(long)]

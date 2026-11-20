@@ -10,6 +10,7 @@
 //! colour is off.
 
 mod generated;
+pub mod image;
 
 pub use generated::{LOGOS, RawLogo};
 

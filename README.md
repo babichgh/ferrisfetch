@@ -8,10 +8,11 @@
 
 **ferrisfetch** is a [Fastfetch](https://github.com/fastfetch-cli/fastfetch)-inspired
 system information tool written in Rust. It displays your system's details next
-to an ASCII logo, with selectable modules, automatic colours, and plain-text or
+to an ASCII logo or a full-colour PNG/JPEG image, with selectable modules, automatic colours, and plain-text or
 JSON output for scripts
 
 - **531 built-in logos**, vendored from Fastfetch
+- **PNG/JPEG logos** rendered as pixels with the Kitty Graphics Protocol
 - **16 system information modules**, shown in the order you choose
 - **Persistent JSON configuration** with safe generation via `--gen-config`
 - **Terminal-aware layout** that hides the logo when space is limited
@@ -219,7 +220,7 @@ Example configuration (JSON, not Fastfetch's JSONC format):
 
 All fields are optional. `modules` selects the order (duplicates are removed);
 an empty array shows no modules. Without it, the built-in defaults apply.
-`hide-modules` filters that list. `logo` is a built-in name/alias or `"off"`;
+`hide-modules` filters that list. `logo` is a built-in name/alias, PNG/JPEG path, or `"off"`;
 omit it or use `null` for automatic distribution detection. The sampling interval must be
 at least 200 ms and only affects `cpu-usage`.
 
@@ -259,6 +260,56 @@ The default logo is selected from your distribution's `/etc/os-release` ID.
 Key colours follow the logo palette. The logo is automatically hidden if the
 terminal is too narrow to fit both columns
 
+### Full-colour image logos (Kitty)
+
+Place `ferris.png` next to your `config.json`:
+
+```json
+{ "logo": "./ferris.png" }
+```
+
+Or set a maximum width in terminal columns (default: 28):
+
+```json
+{ "logo": { "type": "kitty", "source": "./ferris.jpg", "width": 28 } }
+```
+
+PNG, JPG, and JPEG extensions are accepted case-insensitively. Absolute paths
+and paths containing spaces work. Relative config paths are resolved from the
+directory of the config that was loaded, including with `--config`, **not** the
+current working directory. In contrast, a CLI image path is relative to the
+current working directory:
+
+```sh
+ferrisfetch --logo './pictures/ferris photo.png'
+ferrisfetch --config './settings/custom.json'
+```
+
+This uses the [Kitty Graphics Protocol](https://sw.kovidgoyal.net/kitty/graphics-protocol/),
+like Fastfetch's Kitty pixel backend: decoded RGBA pixels are sent directly in
+base64 chunks, not converted to characters. PNG transparency is preserved.
+The whole image keeps its aspect ratio using the terminal's pixel/cell sizes;
+its width is reduced to fit beside the information, and its height is limited
+to the terminal height minus one row. Space is reserved for both columns and
+the cursor ends below the taller one. `width` must be an integer from 1 to 65535.
+
+Graphics require terminal stdout, usable pixel dimensions, and a successful Kitty
+Graphics Protocol capability query. This is not restricted to a terminal brand:
+any terminal (or multiplexer forwarding the protocol) that confirms support can
+display the image. The query waits at most 200 ms; no reply, an error, or inability
+to safely read the terminal response selects the automatic built-in distribution
+logo. Missing/corrupt files and unavailable pixel dimensions also use that fallback.
+If there is no room for two columns, the logo is
+hidden. `--logo` overrides the configured image and size; `--logo-off` always
+hides it. Key colours still use the distribution palette; `--no-color` and
+`NO_COLOR` disable text colours, not image pixels.
+
+`--pipe`, `--json`, and redirected stdout never emit graphics codes, query the
+terminal, or decode images. Input must be a regular file of at most 16 MiB; decoded dimensions are
+limited to 8192 per side and 16,777,216 pixels, with a 64 MiB decoder allocation
+budget. Transmitted images are scaled to at most 4,194,304 pixels. Exceeding a
+limit also selects the built-in fallback. No external image tools are required.
+
 Alignment uses Unicode terminal column widths, including wide CJK characters,
 combining marks, and emoji sequences. Ambiguous-width characters and Nerd Font
 icons are treated as one column; actual rendering can vary by terminal and font.
@@ -275,7 +326,7 @@ icons are treated as one column; actual rendering can vary by terminal and font.
 | `--no-config` | Ignore config files and use built-in settings |
 | `--cpu-usage-interval <MS>` | Sampling interval for `cpu-usage` (minimum/default: 200 ms) |
 | `--logo-off` | Drop the logo, print a single column |
-| `--logo <LOGO>` | Force a logo by name or alias, or `off` |
+| `--logo <LOGO>` | Built-in name/alias, PNG/JPEG path (relative to cwd), or `off` |
 | `--logo-list` | List all 531 available logos |
 | `--no-color` | Disable ANSI colour |
 | `--nerd-separator` | Use the Nerd Font separator instead of `:` |
