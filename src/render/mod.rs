@@ -50,14 +50,26 @@ impl Layout {
         style: &Style,
         term_width: Option<usize>,
     ) -> String {
-        let logo_width = logo.map(|l| l.width()).unwrap_or(0);
-        let key_width = entries
+        self.render_block(logo, None, entries, style, term_width)
+    }
+
+    /// A pixel image occupies cells, not printable logo characters.
+    pub fn render_reserved(
+        &self,
+        columns: usize,
+        rows: usize,
+        entries: &[Entry],
+        style: &Style,
+    ) -> String {
+        self.render_block(None, Some((columns, rows)), entries, style, None)
+    }
+
+    pub fn text_width(&self, entries: &[Entry]) -> usize {
+        entries
             .iter()
             .map(|e| visible_len(&e.key))
             .max()
-            .unwrap_or(0);
-
-        let text_width = key_width
+            .unwrap_or(0)
             + self.key_padding
             + visible_len(&self.separator.to_string())
             + 1
@@ -65,10 +77,31 @@ impl Layout {
                 .iter()
                 .map(|e| visible_len(&e.value))
                 .max()
-                .unwrap_or(0);
+                .unwrap_or(0)
+    }
+
+    fn render_block(
+        &self,
+        logo: Option<&Logo>,
+        reserved: Option<(usize, usize)>,
+        entries: &[Entry],
+        style: &Style,
+        term_width: Option<usize>,
+    ) -> String {
+        let logo_width = reserved
+            .map(|(w, _)| w)
+            .or_else(|| logo.map(|l| l.width()))
+            .unwrap_or(0);
+        let key_width = entries
+            .iter()
+            .map(|e| visible_len(&e.key))
+            .max()
+            .unwrap_or(0);
+
+        let text_width = self.text_width(entries);
 
         // Drop the logo rather than wrap the output mid-line.
-        let show_logo = logo.is_some()
+        let show_logo = (logo.is_some() || reserved.is_some())
             && term_width
                 .map(|w| logo_width + self.gap + text_width <= w)
                 .unwrap_or(true);
@@ -80,7 +113,11 @@ impl Layout {
         };
         let logo_width = if show_logo { logo_width } else { 0 };
 
-        let rows = entries.len().max(logo_lines.len());
+        let rows = entries.len().max(if show_logo {
+            reserved.map(|(_, h)| h).unwrap_or(logo_lines.len())
+        } else {
+            0
+        });
         let mut out = String::new();
 
         for i in 0..rows {

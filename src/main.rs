@@ -95,8 +95,13 @@ fn main() {
 
     // Resolve the artwork first: its palette colours the key column, the way
     // fastfetch defaults `.colorKeys` to the logo's first colour.
+    let image_source = cli
+        .logo_image
+        .clone()
+        .or_else(|| cli.logo.as_deref().and_then(logo::image::Source::from_name));
     let raw = match (cli.logo_off, cli.logo.as_deref().or_else(|| ctx.os_id())) {
         (true, _) | (_, Some("off")) => None,
+        _ if image_source.is_some() => Some(logo::detect(ctx.os_id())),
         (_, Some(id)) => Some(logo::find(id).unwrap_or_else(logo::unknown)),
         (false, None) => Some(logo::detect(None)),
     };
@@ -111,6 +116,17 @@ fn main() {
     };
 
     let logo = raw.map(|l| logo::build(l, &style));
+
+    if raw.is_some()
+        && let Some(source) = image_source
+        && let Some(terminal) = logo::image::Terminal::detect()
+        && let Some(image) =
+            logo::image::KittyImage::load(&source, terminal, &cli.layout(), &entries)
+        && logo::image::protocol_supported()
+    {
+        print!("{}", image.render(&cli.layout(), &entries, &style));
+        return;
+    }
 
     print!(
         "{}",

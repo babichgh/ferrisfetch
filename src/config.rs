@@ -13,9 +13,30 @@ struct Config {
     modules: Option<Vec<String>>,
     hide_modules: Option<Vec<String>>,
     cpu_usage_interval: Option<u64>,
-    logo: Option<String>,
+    logo: Option<LogoConfig>,
     no_color: bool,
     nerd_separator: bool,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(untagged)]
+enum LogoConfig {
+    Name(String),
+    Image(ImageConfig),
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(tag = "type", rename_all = "lowercase", deny_unknown_fields)]
+enum ImageConfig {
+    Kitty {
+        source: PathBuf,
+        #[serde(default = "default_image_width")]
+        width: std::num::NonZeroU16,
+    },
+}
+
+fn default_image_width() -> std::num::NonZeroU16 {
+    std::num::NonZeroU16::new(28).unwrap()
 }
 
 fn default_path() -> Result<PathBuf, String> {
@@ -52,7 +73,7 @@ fn parse_modules(names: Option<Vec<String>>) -> Result<Option<Vec<Module>>, Stri
 }
 
 impl Config {
-    fn apply(self, cli: &mut Cli) -> Result<(), String> {
+    fn apply(self, cli: &mut Cli, directory: &Path) -> Result<(), String> {
         // Validate even overridden settings so mistakes never go unnoticed.
         let modules = parse_modules(self.modules)?;
         let hide = parse_modules(self.hide_modules)?;
@@ -70,7 +91,22 @@ impl Config {
         }
         cli.cpu_usage_interval = cli.cpu_usage_interval.or(self.cpu_usage_interval);
         if cli.logo.is_none() {
-            cli.logo = self.logo;
+            match self.logo {
+                Some(LogoConfig::Name(name)) => {
+                    cli.logo_image = crate::logo::image::Source::from_name(&name);
+                    cli.logo = Some(name);
+                }
+                Some(LogoConfig::Image(ImageConfig::Kitty { source, width })) => {
+                    cli.logo_image = Some(crate::logo::image::Source {
+                        path: source,
+                        width: width.get(),
+                    });
+                }
+                None => {}
+            }
+            if let Some(image) = &mut cli.logo_image {
+                image.path = directory.join(&image.path);
+            }
         }
         cli.no_color |= self.no_color;
         cli.nerd_separator |= self.nerd_separator;
@@ -96,7 +132,7 @@ pub fn load(cli: &mut Cli) -> Result<(), String> {
     let config: Config =
         serde_json::from_str(&text).map_err(|error| format!("{}: {error}", path.display()))?;
     config
-        .apply(cli)
+        .apply(cli, path.parent().unwrap_or_else(|| Path::new(".")))
         .map_err(|error| format!("{}: {error}", path.display()))
 }
 
@@ -161,7 +197,11 @@ mod tests {
             r#"{"cpu-usage-interval":199}"#,
         ] {
             let config: Config = serde_json::from_str(text).unwrap();
-            assert!(config.apply(&mut Cli::parse_from(["ferrisfetch"])).is_err());
+            assert!(
+                config
+                    .apply(&mut Cli::parse_from(["ferrisfetch"]), Path::new("."))
+                    .is_err()
+            );
         }
         for text in [r#"{"moduels":[]}"#, r#"{"modules":"os"}"#, "{"] {
             assert!(serde_json::from_str::<Config>(text).is_err());
@@ -181,7 +221,7 @@ mod tests {
             let mut cli = Cli::parse_from(std::iter::once("ferrisfetch").chain(args));
             let config: Config =
                 serde_json::from_str(r#"{"modules":["ram","os"],"hide-modules":["os"]}"#).unwrap();
-            config.apply(&mut cli).unwrap();
+            config.apply(&mut cli, Path::new(".")).unwrap();
             assert_eq!(cli.selected_modules(), expected);
         }
     }
@@ -198,7 +238,7 @@ mod tests {
                 r#"{"logo":"off","cpu-usage-interval":500,"no-color":true,"nerd-separator":true}"#,
             )
             .unwrap();
-            config.apply(&mut cli).unwrap();
+            config.apply(&mut cli, Path::new(".")).unwrap();
             assert_eq!(
                 cli.logo.as_deref(),
                 Some(if explicit { "arch" } else { "off" })
@@ -209,6 +249,71 @@ mod tests {
             );
             assert!(cli.no_color);
             assert!(cli.nerd_separator);
+        }
+    }
+
+    #[test]
+    fn image_paths_are_relative_to_config_but_cli_paths_are_not() {
+        for (json, expected, width) in [
+            (r#"{"logo":"./a b.png"}"#, "/configs/./a b.png", 28),
+            (r#"{"logo":"/images/a.jpg"}"#, "/images/a.jpg", 28),
+            (
+                r#"{"logo":{"type":"kitty","source":"a.jpeg","width":17}}"#,
+                "/configs/a.jpeg",
+                17,
+            ),
+            (
+                r#"{"logo":{"type":"kitty","source":"a.png"}}"#,
+                "/configs/a.png",
+                28,
+            ),
+        ] {
+            let mut cli = Cli::parse_from(["ferrisfetch"]);
+            serde_json::from_str::<Config>(json)
+                .unwrap()
+                .apply(&mut cli, Path::new("/configs"))
+                .unwrap();
+            let source = cli.logo_image.unwrap();
+            assert_eq!(source.path, Path::new(expected));
+            assert_eq!(source.width, width);
+            for value in ["arch", "off", "./cli.png"] {
+                let mut cli = Cli::parse_from(["ferrisfetch", "--logo", value]);
+                serde_json::from_str::<Config>(json)
+                    .unwrap()
+                    .apply(&mut cli, Path::new("/configs"))
+                    .unwrap();
+                assert_eq!(cli.logo.as_deref(), Some(value));
+                assert!(cli.logo_image.is_none());
+            }
+        }
+    }
+
+    #[test]
+    fn image_config_validation_and_old_forms() {
+        for json in [
+            r#"{"logo":{"type":"kitty","source":"a.png","width":0}}"#,
+            r#"{"logo":{"type":"kitty","source":"a.png","width":-1}}"#,
+            r#"{"logo":{"type":"kitty","source":"a.png","width":1.5}}"#,
+            r#"{"logo":{"type":"kitty","source":"a.png","width":65536}}"#,
+            r#"{"logo":{"type":"kitty","source":"a.png","widht":28}}"#,
+            r#"{"logo":{"type":"chafa","source":"a.png"}}"#,
+            r#"{"logo":{"type":"kitty"}}"#,
+        ] {
+            assert!(serde_json::from_str::<Config>(json).is_err(), "{json}");
+        }
+        for json in [
+            r#"{}"#,
+            r#"{"logo":null}"#,
+            r#"{"logo":"arch"}"#,
+            r#"{"logo":"off"}"#,
+            r#"{"logo":"arch_small"}"#,
+        ] {
+            let mut cli = Cli::parse_from(["ferrisfetch"]);
+            serde_json::from_str::<Config>(json)
+                .unwrap()
+                .apply(&mut cli, Path::new("/configs"))
+                .unwrap();
+            assert!(cli.logo_image.is_none());
         }
     }
 }
